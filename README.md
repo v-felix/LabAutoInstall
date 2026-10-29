@@ -4,6 +4,13 @@
 
 Bộ script PowerShell dựa trên PSAppDeployToolkit để chuẩn bị máy thực hành Windows 10/11 x64. Chạy bằng Administrator từ USB hoặc thư mục chia sẻ LAN.
 
+Hai file chạy nằm ngay ngoài cùng repo:
+
+- **[Install-Lab.cmd](Install-Lab.cmd)**: cài toàn bộ phần mềm, môi trường và SFIT.
+- **[Install-ChromeExtension.cmd](Install-ChromeExtension.cmd)**: chỉ cài/cập nhật SFIT.
+
+Chuột phải → **Run as administrator**. Hai file gọi bộ cài tại `school-lab\dist\SchoolLab-2.3.0-20261029`; cần build trước theo hướng dẫn bên dưới hoặc chép nguyên bộ cài đã có vào đúng vị trí này. Nếu thiếu, cửa sổ sẽ báo rõ đường dẫn.
+
 ## Chức năng
 
 - Cài Dev-C++, Java JDK, Python/pip và VS Code Stable; cấu hình PATH, JAVA_HOME.
