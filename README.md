@@ -29,7 +29,25 @@ Chuột phải → **Run as administrator**. Hai file gọi bộ cài tại `sch
 | Bộ cài sau khi build, chép nguyên thư mục sang USB | `school-lab/dist/SchoolLab-2.3.0-20261029/` |
 | Lịch SFIT có thể sửa trên USB trước khi cài | `Files/ChromeExtension/config.js` trong bộ cài |
 
-Sửa `startAt` và `endAt`, giữ múi giờ `+07:00`. Lịch mẫu: `2026-11-01T08:00:00+07:00` đến `2026-11-01T11:00:00+07:00`. Sửa trên USB không tự cập nhật máy đã cài; cần chạy lại bước cài SFIT trên máy đó.
+## Cách sửa ngày giờ SFIT
+
+1. Mở đúng file `config.js` bằng Notepad hoặc VS Code:
+   - **Trước khi build:** [1-sfit-tracker/config.js](1-sfit-tracker/config.js).
+   - **Đã có bộ cài/USB:** `school-lab\dist\SchoolLab-2.3.0-20261029\Files\ChromeExtension\config.js`, hoặc `Files\ChromeExtension\config.js` nếu mở ngay trong thư mục bộ cài.
+2. Sửa ba dòng dưới đây trong cấu hình, rồi lưu file. Ví dụ thi **ngày 01/11/2026, từ 08:00 đến 11:00 giờ Việt Nam**:
+
+   ```javascript
+   "enabled": true,
+   "startAt": "2026-11-01T08:00:00+07:00",
+   "endAt":   "2026-11-01T11:00:00+07:00",
+   ```
+
+   Định dạng: `YYYY-MM-DDTHH:mm:ss+07:00`, dùng giờ 24 tiếng. Giữ dấu ngoặc kép, dấu phẩy và đuôi `+07:00`; `endAt` phải sau `startAt`.
+3. Nếu sửa **mã nguồn**, build gói mới theo phần dưới. Nếu sửa **bộ cài/USB**, không cần build lại: đóng Chrome rồi chạy `Install-ChromeExtension.cmd` bằng Administrator trên từng máy cần cập nhật. Bộ cài tự kiểm tra và cập nhật mã gói cho lịch mới. Hai file chạy ngoài cùng repo dùng lịch trong **bộ cài đã build**, không đọc trực tiếp file nguồn.
+
+Trước `startAt`, SFIT chờ; từ `startAt` đến trước `endAt`, SFIT kiểm soát; đến `endAt`, SFIT tự ngừng kiểm soát, không cần gỡ extension hoặc restore. Lịch tính theo ngày giờ của máy, không tính từ lúc cài; kiểm tra đồng hồ máy trạm. Sửa file trên USB không tự đổi lịch ở các máy đã cài.
+
+**Test nhanh:** đặt `startAt` trước giờ hiện tại 1 phút và `endAt` sau giờ hiện tại 2 phút, rồi cài/cập nhật SFIT. Với extension được Load unpacked thủ công khi phát triển, sửa file trong chính thư mục đã nạp rồi bấm **Reload** tại `chrome://extensions/`.
 
 ## Dựng bộ cài
 
