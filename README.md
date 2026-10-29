@@ -46,4 +46,4 @@ Repo chứa mã nguồn, không chứa installer/VSIX, thư mục `dist` hay log
 
 Đăng nhập đúng tài khoản lớp, đóng Chrome/VS Code. Chrome Stable 120+ cần có sẵn. Chuột phải `Install-Lab.cmd` → **Run as administrator**. Nếu chỉ cần cài/cập nhật SFIT, chạy `Install-ChromeExtension.cmd` bằng Administrator. Để máy yên khi Chrome tự thao tác; hoàn tất SFIT khi hiện **SFIT DA XAC NHAN**, mã **0**.
 
-Hướng dẫn ngắn và vị trí log: [school-lab/README.vi.md](school-lab/README.vi.md). PSAppDeployToolkit được tải từ [repo chính thức](https://github.com/PSAppDeployToolkit/PSAppDeployToolkit), phiên bản khóa **4.1.8**; giấy phép phần mềm bên thứ ba giữ theo nhà phát hành.
+Hướng dẫn ngắn và vị trí log: [school-lab/README.vi.md](school-lab/README.vi.md).
