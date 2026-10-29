@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "SFIT Tracker",
+  "version": "2.0.0",
+  "minimum_chrome_version": "120",
+  "description": "Scheduled exam controls. Edit config.js before packaging.",
+  "permissions": [
+    "tabs",
+    "webNavigation",
+    "storage",
+    "alarms",
+    "declarativeNetRequest",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "SFIT Tracker — Lịch thi",
+    "default_popup": "status.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "block.html",
+        "block.js",
+        "ui.css",
+        "logo.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "icons": {
+    "16": "logo.png",
+    "32": "logo.png",
+    "48": "logo.png",
+    "128": "logo.png"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzjyOK8yLj4hZj1t6C3GtPAWKYzn52qxygShwUVgljthpySym05rMdMphCahcnoEGmbVLuIc+FzSsE+qLNarR7FyfFI5GAgz+KcemNgVKHi1Z5ysPppN2VwRaqHwu018ySWqsCdXiVw8p5aU5On6hEInK1UGeMEF+eab/bmQ3C6C1BoEOKpxMN3hR9HWRGdJ1dW00cpfWhrnfsNZb29rhXzEid311YEkEwoX3pmTz65NrKo0qh6ZVdVZOyuKxbJjyNd2f47B0dS8DkZcoHUr3aCChx4El5X8n5OOmqFNldMcR8wt+DYzpowrOJeAgT3l36wpdFomyKSzqxr/PWsObowIDAQAB"
+}

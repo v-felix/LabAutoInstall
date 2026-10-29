@@ -1,0 +1,23 @@
+# Offline installers, generated packages and local test data
+**/downloads/
+**/dist/
+**/test-results/
+node_modules/
+__pycache__/
+*.pyc
+*.log
+*.tmp
+*.partial
+*.exe
+*.msi
+*.vsix
+*.zip
+
+# Local credentials and editor settings
+.env
+.env.*
+*.pem
+*.pfx
+*.key
+.vscode/
+.idea/
