@@ -91,18 +91,25 @@ try {
             $chrome.ConfigSha256 -ine $lock.ChromeExtension.configSha256 -or $actualHash -ine $lock.ChromeExtension.configSha256 -or $sourceHash -ine $lock.ChromeExtension.configSha256 -or
             $heartbeat.token -ne $expected.token -or $heartbeat.packageId -ne $lock.PackageId -or $heartbeat.userSid -ne $sid -or
             $heartbeat.phase -notin @('WAITING','ACTIVE','ENDED','DISABLED')) {
-            throw 'SFIT chua xac nhan dung goi/lich/tai khoan. Mo dung profile Chrome, chay Install-ChromeExtension.cmd.'
+            throw 'SFIT chua xac nhan dung goi/lich/tai khoan. Chay Install-ChromeExtension.cmd de cau hinh OLBDB.'
         }
         Write-Host "SFIT: Da xac nhan profile $($chrome.ProfileDirectory) luc $($chrome.At). Lich: $($lock.ChromeExtension.startAt) -> $($lock.ChromeExtension.endAt)."
         Write-Host 'Day la ket qua cai dat; mo SFIT Tracker > Kiem tra lai de xac nhan hoat dong hien tai.'
         Import-Module (Join-Path $PackageRoot 'Chrome.Profile.psm1') -Force
         $profile = Get-Content -LiteralPath (Join-Path $chromeRoot 'profile-state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($profile.Schema -ne 3 -or $profile.Status -ne 'Ready' -or $profile.UserSid -ne $sid -or
-            $profile.UserDataDirectory -ine (Get-SfitChromeDataPath $env:LOCALAPPDATA) -or $profile.ProfileLayout -ne 'Preserved' -or
-            -not $profile.Unpinned -or $chrome.ProfileDirectory -ne $profile.ProfileDirectory) { throw 'Selected Chrome profile verification is missing.' }
+        if ($profile.Schema -ne 4 -or $profile.Status -ne 'Ready' -or $profile.UserSid -ne $sid -or
+            $profile.UserDataDirectory -ine (Get-SfitChromeDataPath $env:LOCALAPPDATA) -or $profile.ProfileLayout -ne 'DedicatedOLBDB' -or
+            $profile.ProfileName -ne 'OLBDB' -or -not $profile.Unpinned -or $chrome.ProfileDirectory -ne $profile.ProfileDirectory) { throw 'Dedicated OLBDB profile verification is missing.' }
         $selected = Get-SfitChromeProfileSelection $env:LOCALAPPDATA $profile.ProfilePath
         if ($selected.ProfileDirectory -ne $profile.ProfileDirectory -or -not (Test-Path -LiteralPath $selected.ProfilePath -PathType Container)) { throw 'The selected Chrome profile is missing.' }
-        Write-Host "Chrome: giu nguyen cac profile; SFIT duoc cai va bo ghim trong profile $($profile.ProfileDirectory)."
+        $exam = Get-Content -LiteralPath (Join-Path $chromeRoot 'olbdb-profile.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $owner = Get-Content -LiteralPath (Join-Path $selected.ProfilePath 'SchoolLab.Profile.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($exam.UserSid -ne $sid -or $exam.ProfileDirectory -ne $profile.ProfileDirectory -or $owner.ProfileToken -cne $exam.ProfileToken -or $owner.UserSid -ne $sid) { throw 'OLBDB profile ownership mismatch.' }
+        if (-not (Test-Path -LiteralPath $profile.Shortcut -PathType Leaf)) { throw 'Missing OLBDB desktop shortcut.' }
+        $wsh = New-Object -ComObject WScript.Shell; $link = $wsh.CreateShortcut($profile.Shortcut)
+        $arguments = '--profile-directory="{0}" --new-window "{1}"' -f $profile.ProfileDirectory,$lock.ChromeExtension.examUrl
+        if ($link.TargetPath -ine $expected.chromeExecutable -or $link.Arguments -cne $arguments) { throw 'OLBDB shortcut no longer opens the configured exam profile/site.' }
+        Write-Host "Chrome: giu nguyen profile cu; mo shortcut OLBDB de vao $($lock.ChromeExtension.examUrl) dung profile thi."
     }
     Write-Host 'SAN SANG: Cai dat may va kiem tra tu dong trong tai khoan nay da dat.' -ForegroundColor Green
     Write-Host "May: $env:COMPUTERNAME | Tai khoan: $env:USERNAME"

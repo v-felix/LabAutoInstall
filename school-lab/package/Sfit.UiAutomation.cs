@@ -137,6 +137,18 @@ public static class SfitUi {
         return result;
     }
     public static AutomationElement ChromeWindow(int sessionId) { return Bounded(delegate { return RawChromeWindow(sessionId); }); }
+    public static AutomationElement[] ChromeWindows(int sessionId) { return Bounded(delegate {
+        var result = new List<AutomationElement>();
+        foreach (AutomationElement w in AutomationElement.RootElement.FindAll(TreeScope.Children,Condition.TrueCondition)) {
+            try {
+                var p = Process.GetProcessById(w.Current.ProcessId);
+                if (p.ProcessName.Equals("chrome",StringComparison.OrdinalIgnoreCase) && p.SessionId == sessionId &&
+                    w.Current.NativeWindowHandle != 0 && IsWindowVisible(new IntPtr(w.Current.NativeWindowHandle)) &&
+                    (w.Current.ClassName ?? "").StartsWith("Chrome_WidgetWin_",StringComparison.Ordinal) && Omnibox(w) != null) result.Add(w);
+            } catch (ElementNotAvailableException) {} catch (InvalidOperationException) {} catch (ArgumentException) {}
+        }
+        return result.ToArray();
+    }); }
     public static string EnsureExtensionsPage(AutomationElement w) { return Bounded(delegate { return RawEnsureExtensionsPage(w); }); }
     public static bool EnableDeveloperMode(AutomationElement w) { return Bounded(delegate { return RawEnableDeveloperMode(w); }); }
     public static bool ClickLoad(AutomationElement w) { return Bounded(delegate { return RawClickLoad(w); }); }

@@ -58,6 +58,58 @@ if(-not ([IO.Path]::GetFullPath($link).StartsWith([IO.Path]::GetFullPath($scratc
 [IO.Directory]::Delete($link)
 $source = [IO.File]::ReadAllText((Join-Path $root 'package\Chrome.Profile.psm1'))
 Assert ($source -notmatch 'Remove-Item -LiteralPath \$data|function Initialize-SfitChromeProfile|function Update-SfitChromeShortcuts') 'Destructive profile reset/shortcut rewrite remains exposed'
+# Provision OLBDB beside existing profiles; do not adopt by display name.
+WriteJson (Join-Path $data 'Profile 5\Preferences') @{profile=@{name='OLBDB'};custom=@{keep='PREEXISTING OLBDB'}}
+$originalFiles=@{}; foreach($f in Get-ChildItem -LiteralPath $local -File -Recurse){$originalFiles[$f.FullName]=(Get-FileHash -LiteralPath $f.FullName).Hash}
+$examJournal=Join-Path $local 'SchoolLab\Chrome\olbdb-profile.json'
+$exam = Initialize-SfitExamProfile $local $examJournal 'OLBDB'
+Assert ($exam.ProfileName -eq 'OLBDB' -and -not $exam.Reused) 'Fresh exam profile not created'
+Assert ($exam.ProfileDirectory -match '^SchoolLab-OLBDB-[0-9a-f]{12}$') 'Exam directory is not distinct/owned'
+Assert ($exam.ProfilePath -ne (Join-Path $data 'Profile 5')) 'Adopted unrelated OLBDB profile'
+$examPreferences=Get-Content -LiteralPath (Join-Path $exam.ProfilePath 'Preferences') -Raw -Encoding UTF8 | ConvertFrom-Json
+Assert ($examPreferences.profile.name -eq 'OLBDB' -and -not $examPreferences.profile.using_default_name) 'Exam profile name not seeded'
+Assert (@(Get-SfitPinnedExtensions $exam.ProfilePath).Count -eq 0) 'New exam profile starts pinned'
+foreach($path in $originalFiles.Keys){Assert ((Get-FileHash -LiteralPath $path).Hash -eq $originalFiles[$path]) ('Old data changed: '+$path)}
+Set-Content -LiteralPath (Join-Path $exam.ProfilePath 'History') -Value 'KEEP EXAM PROFILE ON RETRY'
+$examHash=(Get-FileHash -LiteralPath (Join-Path $exam.ProfilePath 'Preferences')).Hash
+$again=Initialize-SfitExamProfile $local $examJournal 'OLBDB'
+Assert ($again.Reused -and $again.ProfilePath -eq $exam.ProfilePath) 'Retry created another OLBDB profile'
+Assert ((Get-FileHash -LiteralPath (Join-Path $exam.ProfilePath 'Preferences')).Hash -eq $examHash) 'Retry rewrote exam preferences'
+Assert ((Get-Content -LiteralPath (Join-Path $exam.ProfilePath 'History')) -eq 'KEEP EXAM PROFILE ON RETRY') 'Retry lost exam data'
+Assert (@(Get-SfitChromeProfiles $data | Where-Object {$_ -like 'SchoolLab-OLBDB-*'}).Count -eq 1) 'Duplicate exam profiles'
+Throws { Initialize-SfitExamProfile $local (Join-Path $data 'unsafe-journal.json') 'OLBDB' }
+Throws { Initialize-SfitExamProfile $local (Join-Path $scratch 'bad-name.json') '..\Default' }
+$markerPath=Join-Path $exam.ProfilePath 'SchoolLab.Profile.json'
+$markerText=[IO.File]::ReadAllText($markerPath)
+$badMarker=$markerText | ConvertFrom-Json; $badMarker.ProfileToken='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+WriteJson $markerPath $badMarker
+Throws { Initialize-SfitExamProfile $local $examJournal 'OLBDB' }
+[IO.File]::WriteAllText($markerPath,$markerText,[Text.UTF8Encoding]::new($false))
+# Actual .lnk operations are confined to a fake desktop/executable.
+$desktop=Join-Path $scratch 'Desktop'; $fakeChrome=Join-Path $scratch 'Application\chrome.exe'
+New-Item -ItemType Directory -Path (Split-Path -Parent $fakeChrome) -Force | Out-Null
+Set-Content -LiteralPath $fakeChrome -Value 'NOT EXECUTED'
+$shortcut=New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $desktop 'https://utcoj.info/' 'OLBDB'
+$wsh=New-Object -ComObject WScript.Shell; $link=$wsh.CreateShortcut($shortcut)
+Assert ((Split-Path -Leaf $shortcut) -eq 'OLBDB.lnk') 'Wrong shortcut name'
+Assert ($link.TargetPath -ieq $fakeChrome) 'Shortcut targets wrong Chrome'
+Assert ($link.Arguments -ceq ('--profile-directory="{0}" --new-window "https://utcoj.info/"' -f $exam.ProfileDirectory)) 'Shortcut opens wrong profile/site'
+Assert ((New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $desktop 'https://utcoj.info/' 'OLBDB') -eq $shortcut) 'Shortcut retry not idempotent'
+Throws { New-SfitExamShortcut $fakeChrome 'Default' $desktop 'https://utcoj.info/' 'OLBDB' }
+Throws { New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $desktop 'https://password@utcoj.info/' 'OLBDB' }
+$conflictDesktop=Join-Path $scratch 'UnrelatedDesktop';New-Item -ItemType Directory -Path $conflictDesktop | Out-Null
+$conflict=Join-Path $conflictDesktop 'OLBDB.lnk';$other=$wsh.CreateShortcut($conflict);$other.TargetPath="$env:SystemRoot\System32\notepad.exe";$other.Save()
+$conflictHash=(Get-FileHash -LiteralPath $conflict).Hash
+Throws { New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $conflictDesktop 'https://utcoj.info/' 'OLBDB' }
+Assert ((Get-FileHash -LiteralPath $conflict).Hash -eq $conflictHash) 'Unrelated shortcut overwritten'
+# Resume a journal written before first directory creation, without Local State.
+$recoveryLocal=Join-Path $scratch 'Recovery\Local'; $recoveryData=Get-SfitChromeDataPath $recoveryLocal
+$recoveryJournal=Join-Path $recoveryLocal 'SchoolLab\Chrome\olbdb-profile.json'
+WriteJson $recoveryJournal @{Schema=1;Status='Creating';UserSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;UserDataDirectory=$recoveryData;ProfileName='OLBDB';ProfileDirectory='SchoolLab-OLBDB-abcdef123456';ProfileToken='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
+$recovered=Initialize-SfitExamProfile $recoveryLocal $recoveryJournal 'OLBDB'
+Assert ($recovered.ProfileDirectory -eq 'SchoolLab-OLBDB-abcdef123456' -and (Test-Path -LiteralPath (Join-Path $recovered.ProfilePath 'Preferences'))) 'Interrupted initial creation not resumed'
+Assert (-not (Test-Path -LiteralPath (Join-Path $recoveryData 'Local State'))) 'SchoolLab rewrote Chrome Local State'
+
 # All registry mutations below use our own disposable HKCU test key.
 $testKey = 'HKCU:\Software\SchoolLabTests\' + [guid]::NewGuid().ToString('N')
 $id = 'gojbmoppgoeccpfgiigckholndeagdcm'

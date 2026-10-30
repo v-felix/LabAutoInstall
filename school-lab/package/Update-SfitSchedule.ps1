@@ -43,6 +43,8 @@ $lock.PackageId = $lock.BasePackageId + '-sfit-' + $hash.Substring(0,8)
 $lock.ChromeExtension.configSha256 = $hash
 $lock.ChromeExtension.startAt = $c.startAt; $lock.ChromeExtension.endAt = $c.endAt
 $lock.ChromeExtension.enabled = $c.enabled
+$lock.ChromeExtension | Add-Member NoteProperty examUrl $c.examUrl -Force
+$lock.ChromeExtension | Add-Member NoteProperty allowedHosts @($c.allowedHosts) -Force
 $now = [datetimeoffset]::UtcNow
 $lock.ChromeExtension.phase = if (-not $c.enabled) {'DISABLED'} elseif ($now -lt $start) {'WAITING'} elseif ($now -lt $end) {'ACTIVE'} else {'ENDED'}
 $record = @($lock.Files | Where-Object Path -eq $relative)

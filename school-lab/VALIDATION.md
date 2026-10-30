@@ -157,3 +157,14 @@ Nguồn: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/extens
 - Nạp SFIT, đợi native report mới sau thao tác Load; xác nhận SFIT detail và không ghim trong cửa sổ đó trước khi đạt. Journal schema 3 ghi profile được chọn, readiness không yêu cầu chỉ có Default.
 - Đã đạt 55 kiểm tra profile/bảo toàn từng byte/migration policy giả lập và force-pin policy; 75 kiểm tra SFIT/UI boundary; 100 kiểm tra hồi quy.
 - Các kiểm tra trên không mở/điều khiển Chrome thật, không sửa dữ liệu/policy Chrome thật của máy phát triển. Cần pilot UI Windows 10/11 với profile Default và Profile 1/2, extension đang ghim và lượt chạy lại.
+
+## SchoolLab 2.5.0 — profile OLBDB và UTCOJ (2026-10-30)
+
+- Đổi cấu hình sang https://utcoj.info/, allowlist chính xác utcoj.info, lịch 01/11/2026 13:00–17:00 +07:00.
+- Giữ nguyên profile cũ; journal/marker sở hữu dành riêng cho OLBDB, seed Preferences chỉ trong thư mục mới trước khi Chrome mở; rerun không tạo trùng/reset/ghi đè Preferences.
+- Chỉ dùng cửa sổ Chrome mới và xác minh đúng Profile Path của OLBDB; shortcut Desktop/OLBDB.lnk trỏ đúng thư mục và examUrl. Không ghi đè shortcut không thuộc lượt triển khai.
+- Ghi SFIT sang Program Files/SchoolLab/ChromeExtension/OLBDB, không ghi đè các tệp SFIT đã cài ở đường dẫn cũ. Metadata/updater đồng bộ examUrl để shortcut theo đúng site sau khi sửa config.js.
+- Bản nguồn SFIT 2.0 hiện tại đã không có màn hình nhập code. Thêm regression cho ACTIVE theo lịch không cần hành động join/code và popup/block page không có input/form nhập mã.
+- Đạt 89 kiểm tra profile/migration/shortcut/khôi phục journal; 77 kiểm tra tích hợp SFIT; 19 bài kiểm tra runtime SFIT; 100 kiểm tra hồi quy.
+- Chrome 156.0.8078.48 headless với user-data-dir cô lập đã xác nhận mở đúng thư mục mới, giữ tên OLBDB, đăng ký OLBDB vào info_cache và không đổi Preferences của profile cũ. Kết quả ở test-results/olbdb-engine-ab06f0f12e8344d18a4678a1f0799f86/result.json, không đóng gói.
+- Không cài/gỡ extension hay tạo profile trên tài khoản Chrome thật của máy phát triển. Chưa chạy installer UI Load unpacked thực tế trên Windows 10/11; vẫn cần pilot trước khi nhân rộng.

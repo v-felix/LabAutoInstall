@@ -1,43 +1,35 @@
-# SFIT Tracker 2.0 — tích hợp SchoolLab 2.4.0
+# SFIT Tracker 2.0 — SchoolLab 2.5.0
 
-SFIT kiểm soát tab và trang thi theo lịch cố định. Bản 2.4.0 thay đổi cách triển khai Chrome; mã runtime extension vẫn là 2.0.0.
+SFIT tự kiểm soát tab/trang thi theo lịch, không có ô nhập code vào thi hoặc tạo phiên.
 
-## Cài vào Chrome
+- Trang thi: **https://utcoj.info/**; allowedHosts chỉ có **utcoj.info**.
+- Lịch đã đặt: **01/11/2026, 13:00–17:00, giờ Việt Nam (+07:00)**.
+- SchoolLab giữ nguyên profile cũ, tạo/reuse profile riêng **OLBDB**, cài SFIT trên đó và tạo shortcut **OLBDB** trên Desktop.
+- Chạy Install-ChromeExtension.cmd bằng Administrator, để máy yên lúc tự cài. Chỉ đạt khi SFIT DA XAC NHAN, mã 0. Ngày thi mở shortcut OLBDB, không cần cắm USB.
 
-1. Mở sẵn đúng profile Chrome cần cài, nên chỉ để một cửa sổ. Đóng VS Code nếu cài cả bộ.
-2. Chạy Install-ChromeExtension.cmd bằng Administrator, hoặc Install-Lab.cmd để cài toàn bộ.
-3. Để máy yên: script tạo tab setup, xác minh Profile Path bằng chrome://version, mở chrome://extensions, bật Developer mode, bỏ ghim extension và Load unpacked SFIT.
-4. Chỉ đạt khi có SFIT DA XAC NHAN và mã 0; script phải nhận native report mới và xác nhận SFIT không ghim trong profile đã chọn.
+## Chỉnh lịch
 
-Giữ nguyên tất cả profile, bookmark, lịch sử, dữ liệu và shortcut Chrome. Chỉ cài/bỏ ghim trong profile đã chọn; không gỡ hoặc vô hiệu hóa các extension khác. Nếu Chrome đang đóng, script mở profile dùng gần nhất. Không xóa/restore dữ liệu hoặc khóa tạo profile. Hướng dẫn chi tiết: [CHROME-PROFILE-USB.vi.md](CHROME-PROFILE-USB.vi.md).
-
-## Sửa ngày giờ
-
-Trước khi build: sửa 1-sfit-tracker/config.js trong repo. Với bộ cài đã build/USB: sửa Files/ChromeExtension/config.js rồi chạy lại bước cài SFIT trên từng máy cần cập nhật, không cần build lại.
+Sửa nguồn `1-sfit-tracker/config.js` trước khi build. Với bộ cài/USB đã có, sửa `Files/ChromeExtension/config.js` rồi chạy lại bước cài SFIT trên các máy cần cập nhật, không cần build lại:
 
 ```javascript
 "enabled": true,
-"startAt": "2026-11-01T08:00:00+07:00",
-"endAt":   "2026-11-01T11:00:00+07:00",
+"startAt": "2026-11-01T13:00:00+07:00",
+"endAt":   "2026-11-01T17:00:00+07:00",
+"examUrl": "https://utcoj.info/",
+"allowedHosts": ["utcoj.info"],
 ```
 
-Đây là ví dụ ngày 01/11/2026, 08:00–11:00 giờ Việt Nam. Giữ múi giờ +07:00, giờ 24 tiếng và endAt sau startAt. Không tạo phiên hoặc tính thời gian từ lúc cài. Đồng hồ máy trạm phải đúng. Sửa trên USB không tự cập nhật các máy đã cài.
+Giữ múi giờ +07:00, giờ 24 tiếng, endAt sau startAt và đồng hồ máy đúng. Không tính thời gian từ lúc cài. Sửa trên USB không tự thay đổi lịch máy đã cài. Test nhanh: bắt đầu trước hiện tại 1 phút, kết thúc sau hiện tại 2 phút. Load unpacked thủ công cần Reload sau khi sửa file đã nạp.
 
-Test nhanh: startAt trước hiện tại 1 phút, endAt sau hiện tại 2 phút. Nếu Load unpacked thủ công khi phát triển, sửa file trong thư mục đã nạp rồi bấm Reload extension tại chrome://extensions.
+## Hành vi
 
-## Hành vi runtime
+- WAITING: trước lịch, chưa giới hạn.
+- ACTIVE: áp dụng allowedHosts, một tab thi khi singleExamTab=true, mở examUrl khi autoOpenExam=true và ẩn chatbox khi hideChatbox=true.
+- ENDED/DISABLED: tự gỡ giới hạn, không yêu cầu đi gỡ extension/restore từng máy.
+- networkMode=navigation giới hạn điều hướng; strict chặn thêm request ngoài allowedHosts/resourceHosts, cần đủ CDN/API khi sử dụng.
+- Giữ bài đang làm khi hết giờ. Chỉ đóng tab mới phát sinh trong giờ thi, không xóa hàng loạt tab đã tồn tại.
+- Chỉ kiểm soát profile cài SFIT; không khóa các profile, trình duyệt, ứng dụng khác hoặc chống quyền Administrator.
 
-- WAITING: trước lịch; chưa áp dụng giới hạn.
-- ACTIVE: áp dụng allowedHosts, giữ một tab thi khi singleExamTab=true; autoOpenExam=true tự mở examUrl. hideChatbox=true ẩn chat trên trang được phép.
-- ENDED hoặc DISABLED: tự gỡ giới hạn. Không phải đi gỡ extension/restore từng máy.
-- networkMode=navigation chỉ giới hạn điều hướng; strict chặn thêm request mạng ngoài allowedHosts/resourceHosts. Điền đủ CDN/API khi dùng strict.
-- Giữ bài đang làm khi hết giờ; chỉ đóng tab mới phát sinh trong giờ áp dụng, không xóa hàng loạt tab đã tồn tại.
-- Chỉ kiểm soát profile nạp extension; không chống người có quyền Administrator, trình duyệt/profile khác hoặc chỉnh đồng hồ.
+Log: %LOCALAPPDATA%/SchoolLab/Chrome. Native bridge xác minh ID/SID/token/version/hash lịch và báo cáo mới; script phải xác nhận đúng profile OLBDB và không ghim trước khi đạt. Không mở cổng mạng hoặc gửi log ra Internet.
 
-## Log và xác nhận
-
-Log: %LOCALAPPDATA%/SchoolLab/Chrome gồm install.log, result.json, expected.json, heartbeat.json và profile-state.json. Lỗi UI có thêm uia-diagnostic.txt; mã lỗi Chrome là 69030.
-
-Native bridge kiểm ID, SID, token của lượt cài, phiên bản/hash lịch và thời gian báo cáo. Chỉ một heartbeat từ profile khác chưa đủ để báo đạt; phải xác nhận trang chi tiết SFIT trong cửa sổ đã chọn. Không mở cổng mạng hoặc gửi log lên Internet.
-
-Readiness dùng journal schema 3 và không yêu cầu chỉ tồn tại Default. Muốn Check-LabReady xác nhận toàn bộ gói, phần máy và tài khoản phải cùng PackageId; nếu chỉ cập nhật SFIT, dùng SFIT DA XAC NHAN/mã 0 để xác nhận bước riêng đó.
+Check-LabReady toàn bộ cần báo cáo cùng PackageId. Khi chỉ cập nhật SFIT, dùng SFIT DA XAC NHAN/mã 0 để xác nhận riêng bước này. Chi tiết: [README.vi.md](README.vi.md), [CHROME-PROFILE-USB.vi.md](CHROME-PROFILE-USB.vi.md).

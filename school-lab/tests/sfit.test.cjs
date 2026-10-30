@@ -18,24 +18,24 @@ for (const value of ['2026-02-30T08:00:00+07:00','2026-11-01T25:00:00+07:00','20
 test('reject reversed time and unknown / credentialed exam URL', () => {
   assert.throws(()=>core.validate({...sample,endAt:sample.startAt}));
   assert.throws(()=>core.validate({...sample,examUrl:'https://evil.test/'}));
-  assert.throws(()=>core.validate({...sample,examUrl:'https://password@laptrinhonline.club/'}));
-  assert.throws(()=>core.validate({...sample,allowedHosts:['*.laptrinhonline.club']}));
+  assert.throws(()=>core.validate({...sample,examUrl:'https://password@utcoj.info/'}));
+  assert.throws(()=>core.validate({...sample,allowedHosts:['*.utcoj.info']}));
 });
 test('exact host allowlist rejects suffix attacks / embedded credentials / script URL', () => {
-  for (const u of ['https://laptrinhonline.club.evil.test/','https://laptrinhonline.club@evil.test/','javascript:alert(1)','file:///tmp','chrome://extensions/']) assert.equal(core.allowedUrl(u,base.allowedHosts),false);
-  assert.equal(core.allowedUrl('https://www.laptrinhonline.club/contest/',base.allowedHosts),true);
+  for (const u of ['https://utcoj.info.evil.test/','https://utcoj.info@evil.test/','javascript:alert(1)','file:///tmp','chrome://extensions/']) assert.equal(core.allowedUrl(u,base.allowedHosts),false);
+  assert.equal(core.allowedUrl('https://utcoj.info/contest/',base.allowedHosts),true);
 });
 test('network rules allow exact OJ only and strict CDN cannot become navigation allow', () => {
   const rules = core.rules(core.validate({...sample,networkMode:'strict',resourceHosts:['cdn.test']}));
   const main = rules.find(r=>r.id===10002), resource = rules.find(r=>r.id===10004);
-  assert.equal(new RegExp(main.condition.regexFilter).test('https://laptrinhonline.club.evil/'),false);
+  assert.equal(new RegExp(main.condition.regexFilter).test('https://utcoj.info.evil/'),false);
   assert.equal(new RegExp(main.condition.regexFilter).test('https://cdn.test/'),false);
   assert.equal(new RegExp(resource.condition.regexFilter).test('https://cdn.test/a.js'),true);
 });
 
 function event() { const handlers=[]; return {handlers,addListener:f=>handlers.push(f),fire:(...a)=>handlers.map(f=>f(...a))}; }
 async function worker(raw=sample, now=base.startMs-1000, shared={}, session={}, deployment={}) {
-  const data = shared, sessionData = session, alarms = {}, tabs = new Map([[1,{id:1,url:'https://www.laptrinhonline.club/',active:true}],[2,{id:2,url:'https://outside.test/',active:false}]]);
+  const data = shared, sessionData = session, alarms = {}, tabs = new Map([[1,{id:1,url:'https://utcoj.info/',active:true}],[2,{id:2,url:'https://outside.test/',active:false}]]);
   const messages=[], removed=[], native=[], state={now,rules:[]};
   class Clock extends Date { constructor(...a){ super(...(a.length?a:[state.now])); } static now(){ return state.now; } }
   const store = target => ({get:async key=>({[key]:target[key]}),set:async values=>Object.assign(target,values),remove:async key=>{delete target[key];}});
@@ -88,7 +88,7 @@ test('invalid schedule stays unrestricted and reports explicit configuration err
   const w=await worker({...sample,endAt:'invalid'});assert.equal(w.value('currentPhase'),'INVALID_CONFIG');assert.equal(w.state.rules.length,0);
 });
 test('status restricted to own extension page; content cannot export logs',async()=>{
-  const w=await worker();const result=await w.request('SFIT_LOGS',{id:'test-id',url:'https://www.laptrinhonline.club/',tab:{id:1}});assert.equal(result,undefined);
+  const w=await worker();const result=await w.request('SFIT_LOGS',{id:'test-id',url:'https://utcoj.info/',tab:{id:1}});assert.equal(result,undefined);
   assert.equal((await w.request('SFIT_VERIFY')).phase,'WAITING');
 });
 test('return from blocked page restores exam URL without resetting deadline',async()=>{
@@ -104,4 +104,17 @@ test('native status carries exact deployment nonce, package and config bytes has
   assert(w.native.length>0);assert.equal(w.native[0].token,'install-nonce');assert.equal(w.native[0].packageId,'lab-package');
   assert.equal(w.native[0].configSha256,require('node:crypto').createHash('sha256').update('config').digest('hex'));
   assert.equal((await w.request('SFIT_VERIFY')).nativeError,'');
+});
+
+test('exam activates on schedule without an entry code or join form',async()=>{
+  const w=await worker(sample,base.startMs);
+  assert.equal((await w.request('SFIT_VERIFY')).phase,'ACTIVE');
+  assert(w.state.rules.length>0);
+  for(const file of ['status.html','block.html']){
+    assert.doesNotMatch(fs.readFileSync(path.join(root,file),'utf8'),/<(?:input|form)\b|(?:exam|join|session|access)[-_]?code/i);
+  }
+  assert.equal(sample.examUrl,'https://utcoj.info/');
+  assert.deepEqual(sample.allowedHosts,['utcoj.info']);
+  assert.equal(sample.startAt,'2026-11-01T13:00:00+07:00');
+  assert.equal(sample.endAt,'2026-11-01T17:00:00+07:00');
 });

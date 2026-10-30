@@ -1,12 +1,13 @@
 ﻿@{
     # Edit before building; the builder hashes this file into the package lock.
-    PackageRevision = '2.4.0'
+    PackageRevision = '2.5.0'
     EnableChromeExtension = $true
-    ChromeExtensionDirectory = '%ProgramFiles%\SchoolLab\ChromeExtension\1-sfit-tracker'
+    ChromeExtensionDirectory = '%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB'
     ChromeExecutable = '' # Empty: discover Chrome Stable in standard locations.
-    # Preserve all Chrome profiles. Resolve the selected browser window via
-    # chrome://version; if Chrome is closed, open the last-used profile.
-    ChromeProfileDirectory = 'Auto'
+    # Preserve every existing profile; provision/reuse our own exam profile.
+    # Its unique directory is recorded per Windows account, not guessed by name.
+    ChromeProfileDirectory = 'Dedicated'
+    ChromeProfileName = 'OLBDB'
     ChromeAutomationTimeoutSeconds = 120
     MinimumFreeGB = 7
     BlockOnPendingReboot = $true

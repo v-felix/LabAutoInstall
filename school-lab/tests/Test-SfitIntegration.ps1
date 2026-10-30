@@ -134,7 +134,7 @@ $original = [IO.File]::ReadAllText((Join-Path $source 'config.js'))
 WriteUtf8 $configPath $original
 WriteUtf8 (Join-Path $files 'background.js') '// immutable code'
 $entries = @(Get-ChildItem $files -File | ForEach-Object { @{Path='Files\ChromeExtension\' + $_.Name;SHA256=(Get-FileHash $_.FullName).Hash} })
-$meta = @{configSha256=(Get-FileHash $configPath).Hash.ToLowerInvariant();startAt='2026-11-01T08:00:00+07:00';endAt='2026-11-01T11:00:00+07:00';enabled=$true;phase='WAITING'}
+$meta = @{configSha256=(Get-FileHash $configPath).Hash.ToLowerInvariant();startAt='2026-11-01T13:00:00+07:00';endAt='2026-11-01T17:00:00+07:00';enabled=$true;phase='WAITING'}
 $lock = @{PackageId='fixture';ChromeExtension=$meta;Files=$entries}
 $lockPath = Join-Path $package 'package-lock.json'; WriteUtf8 $lockPath (Json $lock)
 $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -159,9 +159,14 @@ Assert ($r.ExitCode -ne 0) 'Updater accepted executable code outside JSON config
 WriteUtf8 $configPath ($original.Replace('globalThis.SFIT_CONFIG','/* closed */ throw 1; /* re-open */ globalThis.SFIT_CONFIG'))
 $r = Invoke-LabCommand $ps $argsList
 Assert ($r.ExitCode -ne 0) 'Updater accepted executable code between header comments'
-WriteUtf8 $configPath ($original.Replace('2026-11-01T11:00:00+07:00','2026-10-31T11:00:00+07:00'))
+WriteUtf8 $configPath ($original.Replace('2026-11-01T17:00:00+07:00','2026-10-31T17:00:00+07:00'))
 $r = Invoke-LabCommand $ps $argsList
 Assert ($r.ExitCode -ne 0) 'Updater accepted reversed interval'
+WriteUtf8 $configPath ($original.Replace('utcoj.info','exam.utcoj.info'))
+$r = Invoke-LabCommand $ps $argsList
+Assert ($r.ExitCode -eq 0) 'Updater rejected a valid exam site/allowlist change'
+$updated = Get-Content $lockPath -Raw | ConvertFrom-Json
+Assert ($updated.ChromeExtension.examUrl -eq 'https://exam.utcoj.info/' -and $updated.ChromeExtension.allowedHosts[0] -eq 'exam.utcoj.info') 'Exam URL/allowlist metadata stayed stale after config change'
 @{Passed=$script:passed;PowerShell=$PSVersionTable.PSVersion.ToString();Scope='No UI actions, no Chrome profile/registry/Program Files changes';At=(Get-Date -Format o)} |
     ConvertTo-Json | Set-Content (Join-Path $scratch 'result.json') -Encoding UTF8
 Write-Host "PASS: $script:passed SFIT integration checks. $scratch"

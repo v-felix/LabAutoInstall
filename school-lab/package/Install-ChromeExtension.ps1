@@ -47,13 +47,20 @@ try {
     $chrome = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
     if (-not $chrome) { throw 'Chrome is not installed. Install Chrome Stable, then rerun this extension-only command.' }
     if ((Get-Item -LiteralPath $chrome).VersionInfo.FileMajorPart -lt 120) { throw 'Chrome 120 or newer is required.' }
-    if ($config.ChromeProfileDirectory -ne 'Auto') { throw 'This package selects the open Chrome profile automatically.' }
+    if ($config.ChromeProfileDirectory -ne 'Dedicated' -or $config.ChromeProfileName -ne 'OLBDB') { throw 'This package uses its dedicated OLBDB exam profile.' }
     Import-Module (Join-Path $PackageRoot 'Chrome.Profile.psm1') -Force
     $step = 'LegacyPolicyCleanup'
     $migration = Remove-SfitLegacyPolicies (Join-Path $logRoot 'policy-state.json')
     Write-SfitTrace "Old SchoolLab policies: $($migration.Status); changed=$($migration.ChangedNames -join ',')"
     Assert-SfitUnpackedPolicies $extension.id
     Assert-SfitToolbarPolicies @($extension.id)
+    $step = 'PrepareOLBDB'
+    $selection = Initialize-SfitExamProfile $env:LOCALAPPDATA (Join-Path $logRoot 'olbdb-profile.json') $config.ChromeProfileName
+    $profileDirectory = $selection.ProfileDirectory
+    $examUrl = [string]$lock.ChromeExtension.examUrl
+    if (-not $examUrl) { throw 'Missing examUrl in the Chrome payload metadata.' }
+    $shortcut = New-SfitExamShortcut $chrome $profileDirectory ([Environment]::GetFolderPath('Desktop')) $examUrl $selection.ProfileName
+    Write-SfitTrace "Dedicated profile=$profileDirectory; name=$($selection.ProfileName); reused=$($selection.Reused); shortcut=$shortcut. Existing profiles/shortcuts are untouched."
     $destination = [IO.Path]::GetFullPath((Expand-LabPath $config.ChromeExtensionDirectory))
     $support = Join-Path $env:ProgramFiles 'SchoolLab\ChromeSupport'
     if (-not $destination.StartsWith($env:ProgramFiles + '\SchoolLab\',[StringComparison]::OrdinalIgnoreCase)) { throw 'ChromeExtensionDirectory must remain inside Program Files\SchoolLab.' }
@@ -76,49 +83,38 @@ try {
     Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase
     $references = @([Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.ToggleState].Assembly.Location,[Windows.DependencyObject].Assembly.Location,'System.dll')
     Add-Type -Path (Join-Path $support 'Sfit.UiAutomation.cs') -ReferencedAssemblies $references
-    $step = 'SelectProfile'
+    $step = 'OpenOLBDB'
     $sessionId = (Get-Process -Id $PID).SessionId
-    $window = [SfitUi]::ChromeWindow($sessionId)
-    if (-not $window) {
-        # Chrome closed/background-only: ask Explorer to open the last-used
-        # profile without terminating processes or changing any profile files.
-        $last = Get-SfitChromeProfileSelection $env:LOCALAPPDATA
-        $shell = New-Object -ComObject Shell.Application; $hwnd = 0
-        $desktop = $shell.Windows().FindWindowSW(0,0,8,[ref]$hwnd,1)
-        if (-not $desktop) { throw 'Cannot obtain the interactive Explorer desktop.' }
-        $arguments = '--profile-directory="{0}" --new-window --no-first-run --no-default-browser-check --force-renderer-accessibility chrome://newtab/' -f $last.ProfileDirectory
-        $desktop.Document.Application.ShellExecute($chrome,$arguments,'','open',1)
-        $openUntil = [datetime]::UtcNow.AddSeconds(30)
-        while (-not $window -and [datetime]::UtcNow -lt $openUntil) {
-            Start-Sleep -Milliseconds 500; $window = [SfitUi]::ChromeWindow($sessionId)
+    $oldHandles = @([SfitUi]::ChromeWindows($sessionId) | ForEach-Object { [SfitUi]::WindowHandle($_) })
+    $shell = New-Object -ComObject Shell.Application; $hwnd = 0
+    $desktop = $shell.Windows().FindWindowSW(0,0,8,[ref]$hwnd,1)
+    if (-not $desktop) { throw 'Cannot obtain the interactive Explorer desktop.' }
+    $arguments = '--profile-directory="{0}" --new-window --no-first-run --no-default-browser-check --force-renderer-accessibility chrome://version/' -f $profileDirectory
+    $desktop.Document.Application.ShellExecute($chrome,$arguments,'','open',1)
+    $openUntil = [datetime]::UtcNow.AddSeconds(45); $window = $null; $lastOpenLog = [datetime]::MinValue
+    while (-not $window -and [datetime]::UtcNow -lt $openUntil) {
+        foreach ($candidateWindow in @([SfitUi]::ChromeWindows($sessionId))) {
+            $handle = [SfitUi]::WindowHandle($candidateWindow)
+            if ($handle -in $oldHandles) { continue } # Never navigate old profile windows.
+            $null = [SfitUi]::EnsureSetupAddress($candidateWindow,'chrome://version/')
+            $path = [SfitUi]::VersionProfilePath($candidateWindow,$selection.UserDataDirectory)
+            if ($path -and [IO.Path]::GetFullPath($path).TrimEnd('\') -ieq $selection.ProfilePath) {
+                $window = $candidateWindow; $windowHandle = $handle; break
+            }
+        }
+        if (-not $window) {
+            if (([datetime]::UtcNow-$lastOpenLog).TotalSeconds -ge 5) { Write-SfitTrace 'Waiting for the newly opened OLBDB window and its exact Profile Path.'; $lastOpenLog=[datetime]::UtcNow }
+            Start-Sleep -Milliseconds 400
         }
     }
-    if (-not $window) { throw 'Open the intended normal Chrome profile, then rerun. No Chrome profiles were changed.' }
-    $windowHandle = [SfitUi]::WindowHandle($window)
-    Write-SfitTrace "Locked selected Chrome window=$windowHandle; title=$([SfitUi]::WindowTitle($window)); no other window/profile will be used."
-    # Open a setup tab, preserving the existing page and unsaved form content.
-    if (-not [SfitUi]::OpenSetupTab($window)) { throw 'Cannot open a setup tab in the selected Chrome window.' }
-    $selectUntil = [datetime]::UtcNow.AddSeconds(15)
-    while (-not [SfitUi]::IsNewTabSelected($window) -and [datetime]::UtcNow -lt $selectUntil) { Start-Sleep -Milliseconds 300 }
-    if (-not [SfitUi]::IsNewTabSelected($window)) { throw 'New setup tab was not selected; no existing page was navigated.' }
-    $dataPath = Get-SfitChromeDataPath $env:LOCALAPPDATA
-    $selectUntil = [datetime]::UtcNow.AddSeconds(30); $actualPath = ''
-    while (-not $actualPath -and [datetime]::UtcNow -lt $selectUntil) {
-        $window = [SfitUi]::SelectedWindow($windowHandle,$sessionId)
-        $null = [SfitUi]::EnsureSetupAddress($window,'chrome://version/')
-        $actualPath = [SfitUi]::VersionProfilePath($window,$dataPath)
-        if (-not $actualPath) { Start-Sleep -Milliseconds 400 }
-    }
-    if (-not $actualPath) { throw 'Cannot verify Profile Path at chrome://version in the selected window. No profile files were changed.' }
-    $selection = Get-SfitChromeProfileSelection $env:LOCALAPPDATA $actualPath
-    if (-not (Test-Path -LiteralPath $selection.ProfilePath -PathType Container)) { throw 'Chrome reported a missing profile directory.' }
-    $profileDirectory = $selection.ProfileDirectory
+    if (-not $window) { throw 'Cannot verify the dedicated OLBDB Profile Path in a new Chrome window. No existing profile was selected or reset.' }
+    Write-SfitTrace "Locked OLBDB window=$windowHandle; verified path=$($selection.ProfilePath)."
     $pins = New-Object 'Collections.Generic.Queue[string]'
     foreach ($id in @(Get-SfitPinnedExtensions $selection.ProfilePath | Sort-Object -Unique)) { $pins.Enqueue($id) }
     $pinCount = $pins.Count; $unpinChanged = 0; $pinInventoryReady = $false
-    Write-LabJson (Join-Path $logRoot 'expected.json') ($plan + @{profileDirectory=$profileDirectory;profilePath=$selection.ProfilePath;extensionDirectory=$destination})
-    Write-SfitTrace "Verified profile=$profileDirectory; path=$actualPath; pinned extensions=$pinCount. All profiles, preferences and shortcuts are preserved."
-    Write-Host "SFIT: Cai vao profile dang mo [$profileDirectory], giu nguyen du lieu; bo ghim cac extension." -ForegroundColor Cyan
+    Write-LabJson (Join-Path $logRoot 'expected.json') ($plan + @{profileDirectory=$profileDirectory;profilePath=$selection.ProfilePath;profileName=$selection.ProfileName;shortcut=$shortcut;chromeExecutable=$chrome;extensionDirectory=$destination})
+    Write-SfitTrace "Verified dedicated profile=$profileDirectory; path=$($selection.ProfilePath); pinned extensions=$pinCount. Existing profiles are preserved."
+    Write-Host "SFIT: Cai vao profile OLBDB [$profileDirectory]; giu nguyen cac profile cu; shortcut OLBDB tren Desktop." -ForegroundColor Cyan
     $started = [datetime]::UtcNow
     $deadline = [datetime]::UtcNow.AddSeconds(([math]::Min(600,$config.ChromeAutomationTimeoutSeconds+10*$pinCount)))
     $step = 'Navigate'; $loaded = $false; $ready = $null
@@ -181,7 +177,7 @@ try {
         Start-Sleep -Milliseconds 500
     }
     if (-not $ready) {
-        throw "Chrome UI automation timed out at $step. No fresh extension handshake was received. See $logRoot. Keep the intended Chrome profile open and rerun."
+        throw "Chrome UI automation timed out at $step. No fresh extension handshake was received. See $logRoot. Rerun this installer to reuse OLBDB; do not select or reset an old profile."
     }
     # Verify the target profile really contains SFIT, and leave SFIT unpinned.
     # This also prevents a heartbeat from another profile alone from succeeding.
@@ -194,12 +190,12 @@ try {
         if ($state -eq 'Unpinned') { $sfitUnpinned = $true } else { Start-Sleep -Milliseconds 400 }
     }
     if (-not $sfitUnpinned) { throw 'SFIT detail/pin state was not verified in the selected profile.' }
-    Write-LabJson (Join-Path $logRoot 'profile-state.json') @{Schema=3;Status='Ready';UserSid=$sid;UserDataDirectory=$selection.UserDataDirectory;
-        ProfileDirectory=$profileDirectory;ProfilePath=$selection.ProfilePath;ProfileLayout='Preserved';Unpinned=$true;At=(Get-Date -Format o)}
+    Write-LabJson (Join-Path $logRoot 'profile-state.json') @{Schema=4;Status='Ready';UserSid=$sid;UserDataDirectory=$selection.UserDataDirectory;
+        ProfileDirectory=$profileDirectory;ProfilePath=$selection.ProfilePath;ProfileName=$selection.ProfileName;Shortcut=$shortcut;ProfileLayout='DedicatedOLBDB';Unpinned=$true;At=(Get-Date -Format o)}
     Write-LabJson (Join-Path $logRoot 'result.json') @{Status='Passed';PackageId=$lock.PackageId;ExtensionId=$extension.id;Version=$extension.version;ConfigSha256=$extension.configSha256;
-        Phase=$ready.phase;ProfileDirectory=$profileDirectory;UserSid=$sid;At=(Get-Date -Format o);ElapsedSeconds=([datetime]::UtcNow-$started).TotalSeconds;Scope='Selected Chrome profile only';UiLoadPerformed=$loaded;
-        ProfilePrepared=$true;ProfileLayout='Preserved';ProfilePath=$selection.ProfilePath;ExtensionsUnpinned=$true;UnpinChanges=$unpinChanged;LegacyPolicyCleanup=$migration.Status;UninstallProtection='NotAvailable_OfflineUnpacked'}
-    Write-Host "SFIT DA XAC NHAN: $($ready.phase), profile $profileDirectory, lich $($extension.startAt) -> $($extension.endAt)" -ForegroundColor Green
+        Phase=$ready.phase;ProfileDirectory=$profileDirectory;UserSid=$sid;At=(Get-Date -Format o);ElapsedSeconds=([datetime]::UtcNow-$started).TotalSeconds;Scope='Dedicated OLBDB Chrome profile only';UiLoadPerformed=$loaded;
+        ProfilePrepared=$true;ProfileLayout='DedicatedOLBDB';ProfilePath=$selection.ProfilePath;ProfileName=$selection.ProfileName;Shortcut=$shortcut;ExamUrl=$examUrl;ExtensionsUnpinned=$true;UnpinChanges=$unpinChanged;LegacyPolicyCleanup=$migration.Status;UninstallProtection='NotAvailable_OfflineUnpacked'}
+    Write-Host "SFIT DA XAC NHAN: $($ready.phase), profile OLBDB [$profileDirectory], lich $($extension.startAt) -> $($extension.endAt)" -ForegroundColor Green
     Write-SfitTrace "Passed: fresh native report phase=$($ready.phase)."
     exit 0
 } catch {
