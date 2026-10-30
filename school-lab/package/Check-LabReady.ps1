@@ -91,17 +91,18 @@ try {
             $chrome.ConfigSha256 -ine $lock.ChromeExtension.configSha256 -or $actualHash -ine $lock.ChromeExtension.configSha256 -or $sourceHash -ine $lock.ChromeExtension.configSha256 -or
             $heartbeat.token -ne $expected.token -or $heartbeat.packageId -ne $lock.PackageId -or $heartbeat.userSid -ne $sid -or
             $heartbeat.phase -notin @('WAITING','ACTIVE','ENDED','DISABLED')) {
-            throw 'SFIT chua xac nhan dung goi/lich/tai khoan. Dong Chrome, chay Install-ChromeExtension.cmd.'
+            throw 'SFIT chua xac nhan dung goi/lich/tai khoan. Mo dung profile Chrome, chay Install-ChromeExtension.cmd.'
         }
         Write-Host "SFIT: Da xac nhan profile $($chrome.ProfileDirectory) luc $($chrome.At). Lich: $($lock.ChromeExtension.startAt) -> $($lock.ChromeExtension.endAt)."
         Write-Host 'Day la ket qua cai dat; mo SFIT Tracker > Kiem tra lai de xac nhan hoat dong hien tai.'
         Import-Module (Join-Path $PackageRoot 'Chrome.Profile.psm1') -Force
         $profile = Get-Content -LiteralPath (Join-Path $chromeRoot 'profile-state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($profile.Schema -ne 2 -or $profile.Status -ne 'Ready' -or $profile.UserSid -ne $sid -or
-            $profile.UserDataDirectory -ine (Get-SfitChromeDataPath $env:LOCALAPPDATA)) { throw 'Chrome classroom profile was not prepared by this package.' }
-        $profiles = @(Get-SfitChromeProfiles $profile.UserDataDirectory)
-        if ($profiles.Count -ne 1 -or $profiles[0] -ne 'Default') { throw 'Chrome has extra/missing profiles. Close Chrome and rerun Install-ChromeExtension.cmd to prepare one profile.' }
-        Write-Host 'Chrome: mot profile Default/SchoolLab, khong ap dung khoa tao profile.'
+        if ($profile.Schema -ne 3 -or $profile.Status -ne 'Ready' -or $profile.UserSid -ne $sid -or
+            $profile.UserDataDirectory -ine (Get-SfitChromeDataPath $env:LOCALAPPDATA) -or $profile.ProfileLayout -ne 'Preserved' -or
+            -not $profile.Unpinned -or $chrome.ProfileDirectory -ne $profile.ProfileDirectory) { throw 'Selected Chrome profile verification is missing.' }
+        $selected = Get-SfitChromeProfileSelection $env:LOCALAPPDATA $profile.ProfilePath
+        if ($selected.ProfileDirectory -ne $profile.ProfileDirectory -or -not (Test-Path -LiteralPath $selected.ProfilePath -PathType Container)) { throw 'The selected Chrome profile is missing.' }
+        Write-Host "Chrome: giu nguyen cac profile; SFIT duoc cai va bo ghim trong profile $($profile.ProfileDirectory)."
     }
     Write-Host 'SAN SANG: Cai dat may va kiem tra tu dong trong tai khoan nay da dat.' -ForegroundColor Green
     Write-Host "May: $env:COMPUTERNAME | Tai khoan: $env:USERNAME"

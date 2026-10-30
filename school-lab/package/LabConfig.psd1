@@ -1,13 +1,12 @@
 ﻿@{
     # Edit before building; the builder hashes this file into the package lock.
-    PackageRevision = '2.3.0'
+    PackageRevision = '2.4.0'
     EnableChromeExtension = $true
     ChromeExtensionDirectory = '%ProgramFiles%\SchoolLab\ChromeExtension\1-sfit-tracker'
     ChromeExecutable = '' # Empty: discover Chrome Stable in standard locations.
-    # First 2.3 run deletes old Chrome User Data for this Windows account and
-    # creates ONE Default/SchoolLab profile. No backup or profile-blocking policy.
-    # Reruns reuse it while it remains the only profile; extra profiles trigger reset.
-    ChromeProfileDirectory = 'Default'
+    # Preserve all Chrome profiles. Resolve the selected browser window via
+    # chrome://version; if Chrome is closed, open the last-used profile.
+    ChromeProfileDirectory = 'Auto'
     ChromeAutomationTimeoutSeconds = 120
     MinimumFreeGB = 7
     BlockOnPendingReboot = $true

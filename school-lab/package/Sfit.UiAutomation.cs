@@ -29,6 +29,17 @@ public static class SfitChromePage {
             (uri.AbsolutePath == "" || uri.AbsolutePath == "/") &&
             uri.UserInfo == "" && uri.Query == "" && uri.Fragment == "";
     }
+    public static bool IsSetupAddress(string address) {
+        if (IsExtensionsAddress(address)) return true;
+        Uri uri;
+        if (!Uri.TryCreate(address,UriKind.Absolute,out uri) || uri.Scheme != "chrome" || uri.UserInfo != "" || uri.Fragment != "") return false;
+        if (uri.Host == "version") return uri.AbsolutePath == "/" && uri.Query == "";
+        return uri.Host == "extensions" && uri.AbsolutePath == "/" && Regex.IsMatch(uri.Query,@"^\?id=[a-p]{32}$");
+    }
+    public static bool IsPinLabel(string name) {
+        string n = Normalize(name);
+        return n == "pin to toolbar" || n == "ghim vao thanh cong cu" || n == "ghim len thanh cong cu";
+    }
     public static bool IsExtensionsTab(string name) {
         string n = Normalize(name);
         return n == "extensions" || n == "tien ich" || n == "tien ich mo rong";
@@ -72,14 +83,18 @@ public interface ISfitOmnibox {
 public static class SfitChromeNavigation {
     public const string Target = "chrome://extensions/";
     public static string Navigate(ISfitOmnibox box) {
+        return NavigateTo(box,Target);
+    }
+    public static string NavigateTo(ISfitOmnibox box,string target) {
+        if (!SfitChromePage.IsSetupAddress(target)) throw new ArgumentException("Only internal Chrome setup pages are allowed");
         if (!box.IsChromeTarget) throw new InvalidOperationException("Navigation target is not a Chrome browser window");
         box.Activate();
         if (!box.IsForeground) return "AwaitForeground";
         if (!box.ModifiersClear) return "AwaitReleasedKeys";
         box.Focus();
         if (!box.IsForeground || !box.HasFocus) return "AwaitOmniboxFocus";
-        box.SetValue(Target);
-        if (!SfitChromePage.IsExtensionsAddress(box.Value)) throw new InvalidOperationException("Chrome omnibox did not accept the internal URL");
+        box.SetValue(target);
+        if (!String.Equals(box.Value.TrimEnd('/'),target.TrimEnd('/'),StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Chrome omnibox did not accept the internal URL");
         if (!box.IsForeground || !box.HasFocus) return "AwaitOmniboxFocus";
         if (!box.ModifiersClear) return "AwaitReleasedKeys";
         box.PressEnter();
@@ -95,6 +110,7 @@ public static class SfitUi {
     static Exception invokeError;
     static readonly Dictionary<int,DateTime> lastNavigation = new Dictionary<int,DateTime>();
     static readonly Dictionary<int,int> navigationCount = new Dictionary<int,int>();
+    static readonly Dictionary<int,string> navigationTarget = new Dictionary<int,string>();
     static SfitUi() {
         // Keep the apartment alive: UIA elements must not outlive the apartment
         // that created their provider proxies.
@@ -127,6 +143,100 @@ public static class SfitUi {
     public static bool SelectFolder(AutomationElement w,string p) { return Bounded(delegate { return RawSelectFolder(w,p); }); }
     public static string Describe(AutomationElement w) { return Bounded(delegate { return RawDescribe(w); },true); }
     public static string WindowTitle(AutomationElement w) { return Bounded(delegate { return w.Current.Name; }); }
+    public static int WindowHandle(AutomationElement w) { return Bounded(delegate { return w.Current.NativeWindowHandle; }); }
+    public static AutomationElement SelectedWindow(int handle,int sessionId) { return Bounded(delegate {
+        var w = AutomationElement.FromHandle(new IntPtr(handle));
+        var p = Process.GetProcessById(w.Current.ProcessId);
+        if (!p.ProcessName.Equals("chrome",StringComparison.OrdinalIgnoreCase) || p.SessionId != sessionId || Omnibox(w) == null)
+            throw new Exception("Selected Chrome window is no longer available; no other profile was selected");
+        return w;
+    }); }
+    public static bool OpenSetupTab(AutomationElement w) { return Bounded(delegate {
+        var buttons = w.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button));
+        foreach (AutomationElement button in buttons) {
+            string name = SfitChromePage.Normalize(button.Current.Name);
+            if ((name != "new tab" && name != "the moi") || IsInDocument(button,w)) continue;
+            object pattern;
+            if (button.Current.IsEnabled && button.TryGetCurrentPattern(InvokePattern.Pattern,out pattern)) {
+                SetForegroundWindow(new IntPtr(w.Current.NativeWindowHandle)); ((InvokePattern)pattern).Invoke(); return true;
+            }
+        }
+        return false;
+    }); }
+    public static bool IsNewTabSelected(AutomationElement w) { return Bounded(delegate {
+        var tabs = w.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.TabItem));
+        foreach (AutomationElement tab in tabs) {
+            object p; string n = SfitChromePage.Normalize(tab.Current.Name);
+            if ((n == "new tab" || n == "the moi") && tab.TryGetCurrentPattern(SelectionItemPattern.Pattern,out p) && ((SelectionItemPattern)p).Current.IsSelected) return true;
+        }
+        return false;
+    }); }
+    public static string EnsureSetupAddress(AutomationElement w,string target) { return Bounded(delegate { return RawEnsureSetupAddress(w,target); }); }
+    public static string VersionProfilePath(AutomationElement w,string userDataDirectory) { return Bounded(delegate {
+        if (!String.Equals(Address(w).TrimEnd('/'),"chrome://version",StringComparison.OrdinalIgnoreCase)) return "";
+        var docs = w.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Document));
+        string prefix = userDataDirectory.TrimEnd('\\') + "\\";
+        foreach (AutomationElement doc in docs) {
+            if (doc.Current.IsOffscreen) continue;
+            var items = doc.FindAll(TreeScope.Descendants,Condition.TrueCondition);
+            foreach (AutomationElement item in items) {
+                string name = (item.Current.Name ?? "").Trim();
+                if (name.StartsWith(prefix,StringComparison.OrdinalIgnoreCase) && name.Substring(prefix.Length).IndexOf('\\') < 0 && name.IndexOf('\n') < 0)
+                    return name;
+                object value;
+                if (item.Current.AutomationId == "profile_path" && item.TryGetCurrentPattern(ValuePattern.Pattern,out value)) return ((ValuePattern)value).Current.Value;
+            }
+        }
+        return "";
+    }); }
+    public static string[] ExtensionIds(AutomationElement w) { return Bounded(delegate {
+        var ids = new HashSet<string>();
+        if (!ActualExtensionsPage(w)) return new string[0];
+        foreach (AutomationElement doc in w.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Document))) {
+            if (doc.Current.IsOffscreen || !SfitChromePage.IsExtensionsTab(doc.Current.Name)) continue;
+            foreach (AutomationElement item in doc.FindAll(TreeScope.Descendants,Condition.TrueCondition)) {
+                foreach (Match match in Regex.Matches((item.Current.Name ?? "")+" "+item.Current.AutomationId,@"(?<![a-p])[a-p]{32}(?![a-p])")) ids.Add(match.Value);
+            }
+        }
+        var result = new string[ids.Count]; ids.CopyTo(result); return result;
+    }); }
+    public static string UnpinExtension(AutomationElement w,string id) { return Bounded(delegate {
+        if (!Regex.IsMatch(id,@"^[a-p]{32}$")) throw new ArgumentException("Invalid extension ID");
+        string target = "chrome://extensions/?id="+id;
+        if (!String.Equals(Address(w),target,StringComparison.OrdinalIgnoreCase)) return "Loading";
+        var docs = w.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Document));
+        foreach (AutomationElement doc in docs) {
+            if (doc.Current.IsOffscreen || !SfitChromePage.IsExtensionsTab(doc.Current.Name)) continue;
+            var items = doc.FindAll(TreeScope.Descendants,Condition.TrueCondition);
+            bool correctId = false, detailSize = false, detailSource = false;
+            foreach (AutomationElement item in items) {
+                string name = (item.Current.Name ?? "").Trim();
+                if (name == id) correctId = true;
+                string label = SfitChromePage.Normalize(name);
+                if (label == "size" || label == "kich thuoc") detailSize = true;
+                if (label == "source" || label == "nguon") detailSource = true;
+            }
+            if (!correctId) continue; // typed address alone is not a loaded detail page
+            bool hasPinLabel = false;
+            foreach (AutomationElement item in items) {
+                if (item.Current.AutomationId != "pin-to-toolbar" && !SfitChromePage.IsPinLabel(item.Current.Name)) continue;
+                hasPinLabel = true;
+                object p;
+                if (!item.TryGetCurrentPattern(TogglePattern.Pattern,out p)) continue;
+                var toggle = (TogglePattern)p;
+                if (toggle.Current.ToggleState == ToggleState.Off) return "Unpinned";
+                if (!item.Current.IsEnabled) throw new Exception("An extension is force-pinned by external policy: "+id);
+                // Scroll only this known toggle into view; never click coordinates.
+                object scroll; if (item.TryGetCurrentPattern(ScrollItemPattern.Pattern,out scroll)) ((ScrollItemPattern)scroll).ScrollIntoView();
+                toggle.Toggle(); return "Changed";
+            }
+            if (hasPinLabel) throw new Exception("Chrome exposes the pin control without TogglePattern; cannot verify unpin: "+id);
+            // A loaded detail page with the exact ID but no pin field is an
+            // extension without a toolbar action (pinnedToToolbar undefined).
+            if (detailSize && detailSource) return "NotPinnable";
+        }
+        return "Loading";
+    }); }
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
@@ -160,10 +270,10 @@ public static class SfitUi {
                 if (!p.ProcessName.Equals("chrome",StringComparison.OrdinalIgnoreCase) || p.SessionId != sessionId ||
                     w.Current.NativeWindowHandle == 0 || !IsWindowVisible(new IntPtr(w.Current.NativeWindowHandle)) ||
                     !(w.Current.ClassName ?? "").StartsWith("Chrome_WidgetWin_",StringComparison.Ordinal)) continue;
-                // Startup/update pages from OTHER extensions can take focus.
-                // Prefer our actual page across all browser windows, rather
-                // than whichever chrome.exe window UIA enumerates first.
-                int rank = ActualExtensionsPage(w) ? 100 : ExtensionTab(w) != null ? 50 : Omnibox(w) != null ? 10 : 1;
+                // Preserve the active / topmost normal browser window. Never
+                // prefer another profile merely because it has Extensions open.
+                if (Omnibox(w) == null) continue;
+                int rank = GetForegroundWindow() == new IntPtr(w.Current.NativeWindowHandle) ? 100 : 10;
                 if (rank > bestRank) { best = w; bestRank = rank; }
             } catch (ElementNotAvailableException) {} catch (InvalidOperationException) {} catch (ArgumentException) {}
         }
@@ -183,6 +293,14 @@ public static class SfitUi {
             if (!inDocument && parent != null) return edit;
         }
         return null;
+    }
+    static bool IsInDocument(AutomationElement element,AutomationElement window) {
+        var parent = TreeWalker.ControlViewWalker.GetParent(element);
+        while (parent != null && !Automation.Compare(parent,window)) {
+            if (parent.Current.ControlType == ControlType.Document) return true;
+            parent = TreeWalker.ControlViewWalker.GetParent(parent);
+        }
+        return parent == null;
     }
     static string Address(AutomationElement window) {
         var edit = Omnibox(window);
@@ -229,7 +347,7 @@ public static class SfitUi {
         public void PressEnter() {
             // Recheck immediately before native input; no WScript.SendKeys,
             // clipboard replacement, screen coordinates or arbitrary text.
-            if (!IsChromeTarget || !IsForeground || !HasFocus || !ModifiersClear || !SfitChromePage.IsExtensionsAddress(Value))
+            if (!IsChromeTarget || !IsForeground || !HasFocus || !ModifiersClear || !SfitChromePage.IsSetupAddress(Value))
                 throw new Exception("Chrome lost omnibox focus before Enter; no key was sent");
             var down = new Input(); down.type = 1; down.data.keyboard.key = 0x0D;
             var up = down; up.data.keyboard.flags = 2;
@@ -261,14 +379,23 @@ public static class SfitUi {
                 return "SelectTab";
             }
         }
+        return RawEnsureSetupAddress(window,SfitChromeNavigation.Target);
+    }
+    static string RawEnsureSetupAddress(AutomationElement window,string target) {
+        if (!SfitChromePage.IsSetupAddress(target)) throw new ArgumentException("Unsupported setup URL");
+        if (String.Equals(Address(window).TrimEnd('/'),target.TrimEnd('/'),StringComparison.OrdinalIgnoreCase)) return "AddressMatches";
         int handle = window.Current.NativeWindowHandle;
+        string previousTarget;
+        if (!navigationTarget.TryGetValue(handle,out previousTarget) || previousTarget != target) {
+            navigationTarget[handle] = target; navigationCount[handle] = 0; lastNavigation.Remove(handle);
+        }
         DateTime previous; int count;
         if (lastNavigation.TryGetValue(handle,out previous) && (DateTime.UtcNow-previous).TotalSeconds < 3) return "LoadingPage";
         navigationCount.TryGetValue(handle,out count);
         if (count >= 3) return "NavigationLimit";
         var edit = Omnibox(window);
         if (edit == null) return "OmniboxUnavailable"; // do not click first-run / authentication prompts
-        string outcome = SfitChromeNavigation.Navigate(new NativeOmnibox(window,edit));
+        string outcome = SfitChromeNavigation.NavigateTo(new NativeOmnibox(window,edit),target);
         if (outcome == "NavigationRequested") { lastNavigation[handle] = DateTime.UtcNow; navigationCount[handle] = count+1; }
         return outcome;
     }

@@ -12,90 +12,52 @@ function Assert($Condition,[string]$Message) { if (-not $Condition) { throw $Mes
 function Throws([scriptblock]$Action) { try { & $Action | Out-Null } catch { $script:passed++; return }; throw 'Expected failure' }
 function Json($Value) { ConvertTo-Json -InputObject $Value -Depth 30 -Compress }
 function WriteJson($Path,$Value) { New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null; [IO.File]::WriteAllText($Path,(Json $Value),[Text.UTF8Encoding]::new($false)) }
-# Absolute fixture targets are confined to this explicitly named workspace tree.
-Assert ([IO.Path]::GetFullPath($data).StartsWith([IO.Path]::GetFullPath($scratch)+'\')) 'Fixture escaped test directory'
+# Selection must be read-only, including when upgrading from an old reset journal.
 New-Item -ItemType Directory -Path (Join-Path $data 'Default'),(Join-Path $data 'Profile 1'),(Join-Path $data 'Profile 2') -Force | Out-Null
-Set-Content (Join-Path $data 'Default\old.txt') 'DISCARD OLD FIXTURE'
-Set-Content (Join-Path $data 'Profile 1\old.txt') 'DISCARD OTHER PROFILE'
-Set-Content (Join-Path $local 'outside.txt') 'KEEP OUTSIDE CHROME'
-WriteJson (Join-Path $data 'Local State') @{profile=@{info_cache=@{Default=@{};'Profile 1'=@{};'Profile 2'=@{}}}}
-$first = Initialize-SfitChromeProfile $local $statePath
-Assert ($first.Schema -eq 2 -and $first.Status -eq 'Ready' -and -not $first.BackupEnabled) 'Fresh profile preparation failed'
-Assert (-not (Test-Path (Join-Path $data 'Default\old.txt'))) 'Old default profile data was retained'
-Assert (-not (Test-Path (Join-Path $data 'Profile 1'))) 'Extra profile not deleted'
-Assert (-not (Test-Path (Join-Path $data 'Profile 2'))) 'Second extra profile not deleted'
-Assert (Test-Path (Join-Path $local 'outside.txt')) 'Data outside Chrome was changed'
-Assert (-not (Test-Path (Join-Path $scratch 'SchoolLabChromeBackups'))) 'Unexpected backup created'
-Assert ((@(Get-SfitChromeProfiles $data) -join ',') -eq 'Default') 'More than one profile remains'
-$prefs = Get-Content (Join-Path $data 'Default\Preferences') -Raw -Encoding UTF8 | ConvertFrom-Json
-Assert ($prefs.profile.name -eq 'SchoolLab' -and $prefs.extensions.pinned_extensions.Count -eq 0) 'SchoolLab profile name/pin defaults incorrect'
-$chromeState = Get-Content (Join-Path $data 'Local State') -Raw | ConvertFrom-Json
-Assert ($chromeState.profile.last_used -eq 'Default' -and $chromeState.profile.last_active_profiles[0] -eq 'Default') 'Default profile startup selection not set'
-Assert (Test-Path (Join-Path $data 'First Run')) 'First-run sentinel not prepared'
-Set-Content (Join-Path $data 'Default\new.txt') 'KEEP WHEN ONLY PROFILE'
-$again = Initialize-SfitChromeProfile $local $statePath
-Assert ((Get-Content (Join-Path $data 'Default\new.txt') -Raw) -like '*KEEP WHEN ONLY PROFILE*') 'Rerun unnecessarily erased the prepared profile'
-Assert ($again.At -eq $first.At) 'Rerun reset an already-correct profile'
-New-Item -ItemType Directory -Path (Join-Path $data 'Profile 3') | Out-Null
-$null = Initialize-SfitChromeProfile $local $statePath
-Assert (-not (Test-Path (Join-Path $data 'Profile 3')) -and -not (Test-Path (Join-Path $data 'Default\new.txt'))) 'Explicit cleanup did not reset extra profiles'
-# Even an arbitrary cached profile name, without a matching directory, must go.
-WriteJson (Join-Path $data 'Local State') @{profile=@{info_cache=@{Default=@{};CustomExamProfile=@{}}}}
-$null = Initialize-SfitChromeProfile $local $statePath
-Assert ((@(Get-SfitChromeProfiles $data) -join ',') -eq 'Default') 'Stale profile picker metadata was retained'
+$idA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; $idB = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+WriteJson (Join-Path $data 'Default\Preferences') @{profile=@{name='My Default'};extensions=@{pinned_extensions=@($idA)};session=@{restore_on_startup=1}}
+WriteJson (Join-Path $data 'Profile 1\Preferences') @{profile=@{name='Student One'};extensions=@{pinned_extensions=@($idB)}}
+WriteJson (Join-Path $data 'Profile 2\Preferences') @{profile=@{name='Teacher'};extensions=@{pinned_extensions=@($idA,$idB)};custom=@{keep='ALL DATA'}}
+WriteJson (Join-Path $data 'Local State') @{profile=@{last_used='Profile 1';info_cache=@{Default=@{};'Profile 1'=@{};'Profile 2'=@{}}}}
+WriteJson $statePath @{Schema=2;Status='ResetPending';UserDataDirectory=$data;ProfileDirectory='Default'}
+foreach($name in @('Default','Profile 1','Profile 2')) {
+    Set-Content -LiteralPath (Join-Path $data ($name+'\History')) -Value ('KEEP HISTORY '+$name)
+    Set-Content -LiteralPath (Join-Path $data ($name+'\Bookmarks')) -Value ('KEEP BOOKMARKS '+$name)
+}
+$before = @{}; foreach($f in Get-ChildItem -LiteralPath $local -File -Recurse){$before[$f.FullName]=(Get-FileHash -LiteralPath $f.FullName).Hash}
+$last = Get-SfitChromeProfileSelection $local
+Assert ($last.ProfileDirectory -eq 'Profile 1') 'Closed browser did not choose last_used'
+$selected = Get-SfitChromeProfileSelection $local (Join-Path $data 'Profile 2')
+Assert ($selected.ProfileDirectory -eq 'Profile 2') 'Actual open-window path did not override a different last_used profile'
+Assert ((@(Get-SfitPinnedExtensions $selected.ProfilePath) -join ',') -eq ($idA+','+$idB)) 'Pinned extension IDs not read from selected profile'
+Assert ((@(Get-SfitPinnedExtensions (Join-Path $data 'Default')) -join ',') -eq $idA) 'Other profile pins read incorrectly'
+Assert (@(Get-SfitChromeProfiles $data).Count -eq 3) 'Profiles were removed'
+foreach($path in $before.Keys){Assert ((Get-FileHash -LiteralPath $path).Hash -eq $before[$path]) ('Existing data changed: '+$path)}
+Assert (@(Get-ChildItem -LiteralPath $local -File -Recurse).Count -eq $before.Count) 'Selection wrote extra Chrome/journal files'
+Throws { Get-SfitChromeProfileSelection $local (Join-Path $scratch 'outside\Profile 2') }
+Throws { Get-SfitChromeProfileSelection $local (Join-Path $data '..\outside') }
+Throws { Get-SfitChromeProfileSelection $local (Join-Path $data 'Guest Profile') }
+Throws { Get-SfitChromeProfileSelection $local (Join-Path $data 'System Profile') }
+Throws { Get-SfitChromeDataPath 'relative-path' }
 Throws { Get-SfitChromeDataPath 'C:\' }
-Throws { Get-SfitChromeDataPath 'relative\path' }
-Throws { Get-SfitChromeDataPath '\\server\share' }
-Throws { Initialize-SfitChromeProfile $local (Join-Path $data 'state.json') }
-# Old backup-era journal is migrated automatically; no manual restore/cleanup.
-WriteJson $statePath @{Schema=1;Status='Ready';UserDataDirectory=$data;UserSid=$first.UserSid;BackupRoot='unused-old-path'}
-Set-Content (Join-Path $data 'Default\legacy.txt') 'OLD VERSION DATA'
-$migrated = Initialize-SfitChromeProfile $local $statePath
-Assert ($migrated.Schema -eq 2 -and -not (Test-Path (Join-Path $data 'Default\legacy.txt'))) 'Old profile journal blocked migration'
-# A stopped reset can repeat safely within the same explicit Chrome data root.
-$migrated.Status = 'ResetPending'; WriteJson $statePath $migrated
-Set-Content (Join-Path $data 'Default\partial.txt') 'PARTIAL RESET'
-$null = Initialize-SfitChromeProfile $local $statePath
-Assert (-not (Test-Path (Join-Path $data 'Default\partial.txt'))) 'Interrupted reset did not finish'
-# Do not follow directory junctions out of the disposable Chrome fixture.
-$external = Join-Path $scratch 'external'
-New-Item -ItemType Directory -Path $external | Out-Null
-Set-Content (Join-Path $external 'sentinel.txt') 'KEEP EXTERNAL'
-$link = Join-Path $data 'linked-data'
-New-Item -ItemType Junction -Path $link -Target $external | Out-Null
-$pending = Get-Content $statePath -Raw | ConvertFrom-Json; $pending.Status = 'ResetPending'; WriteJson $statePath $pending
-Throws { Initialize-SfitChromeProfile $local $statePath }
-Assert (Test-Path (Join-Path $external 'sentinel.txt')) 'Linked external data was deleted'
-Assert (Test-Path (Join-Path $data 'Default\Preferences')) 'Reset deleted data before link validation completed'
-if (-not ([IO.Path]::GetFullPath($link).StartsWith([IO.Path]::GetFullPath($scratch)+'\')) -or
-    -not ((Get-Item -LiteralPath $link -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe link cleanup target' }
-[IO.Directory]::Delete($link) # delete junction itself, never its target contents
-$null = Initialize-SfitChromeProfile $local $statePath
-
-# Actual .lnk file operations, confined to a synthetic desktop in the workspace.
-Assert ((ConvertTo-SfitDefaultProfileArguments '--profile-directory="Profile 2" --new-window') -eq '--profile-directory="Default" --new-window') 'Quoted profile argument not normalized'
-Assert ((ConvertTo-SfitDefaultProfileArguments '"--profile-directory=Profile 3" https://example.test') -eq '--profile-directory="Default" https://example.test') 'Entire quoted profile flag not normalized'
-Assert ((ConvertTo-SfitDefaultProfileArguments '--profile-directory "Profile 4"') -eq '--profile-directory="Default"') 'Split profile flag not normalized'
-$desktop = Join-Path $scratch 'Desktop'
-New-Item -ItemType Directory -Path $desktop -Force | Out-Null
-$fakeChrome = Join-Path $scratch 'Application\chrome.exe'
-New-Item -ItemType Directory -Path (Split-Path -Parent $fakeChrome) -Force | Out-Null
-Set-Content $fakeChrome 'NOT EXECUTED'
-$wsh = New-Object -ComObject WScript.Shell
-$oldLink = Join-Path $desktop 'Google Chrome.lnk'; $lnk = $wsh.CreateShortcut($oldLink)
-$lnk.TargetPath = $fakeChrome; $lnk.Arguments = '--profile-directory="Profile 8" --new-window'; $lnk.Save()
-$otherLink = Join-Path $desktop 'Other.lnk'; $lnk = $wsh.CreateShortcut($otherLink)
-$lnk.TargetPath = "$env:SystemRoot\System32\notepad.exe"; $lnk.Arguments = 'unchanged'; $lnk.Save()
-$customLink = Join-Path $desktop 'Custom Chrome.lnk'; $lnk = $wsh.CreateShortcut($customLink)
-$lnk.TargetPath = $fakeChrome; $lnk.Arguments = '--user-data-dir="D:\Custom" --profile-directory="Profile 1"'; $lnk.Save()
-$links = Update-SfitChromeShortcuts $fakeChrome @($desktop) $desktop
-Assert ($wsh.CreateShortcut($oldLink).Arguments -eq '--profile-directory="Default" --new-window') 'Old Chrome shortcut can reopen a deleted profile'
-Assert ($wsh.CreateShortcut($otherLink).Arguments -eq 'unchanged') 'Non-Chrome shortcut modified'
-Assert ($links.SkippedCustomData.Count -eq 1 -and $wsh.CreateShortcut($customLink).Arguments -like '*D:\Custom*') 'Custom data shortcut silently changed'
-Assert ($wsh.CreateShortcut($links.SchoolLabShortcut).Arguments -eq '--profile-directory="Default"') 'Dedicated SchoolLab Chrome shortcut missing'
-$linksAgain = Update-SfitChromeShortcuts $fakeChrome @($desktop) $desktop
-Assert ($linksAgain.Changed.Count -eq 0) 'Shortcut normalization not idempotent'
-
+$blankLocal = Join-Path $scratch 'Empty\Local'
+$empty = Get-SfitChromeProfileSelection $blankLocal
+Assert ($empty.ProfileDirectory -eq 'Default' -and -not (Test-Path -LiteralPath $blankLocal)) 'First-run selection created/deleted Chrome data'
+WriteJson (Join-Path $data 'Local State') @{profile=@{info_cache=@{Default=@{};'Profile 1'=@{};'Profile 2'=@{}}}}
+Throws { Get-SfitChromeProfileSelection $local }
+# Missing/null/malformed preferences must not be rewritten to an empty profile.
+WriteJson (Join-Path $data 'Profile 2\Preferences') @{custom=@{keep='NO EXTENSIONS'}}
+Assert (@(Get-SfitPinnedExtensions (Join-Path $data 'Profile 2')).Count -eq 0) 'Missing pin list is not empty'
+WriteJson (Join-Path $data 'Profile 2\Preferences') @{extensions=@{pinned_extensions=@('bad-id')}}
+Throws { Get-SfitPinnedExtensions (Join-Path $data 'Profile 2') }
+$external = Join-Path $scratch 'external'; New-Item -ItemType Directory -Path $external | Out-Null
+$link = Join-Path $data 'Linked Profile'; New-Item -ItemType Junction -Path $link -Target $external | Out-Null
+Throws { Get-SfitChromeProfileSelection $local $link }
+# Delete just the disposable junction, never its target; no user data touched.
+if(-not ([IO.Path]::GetFullPath($link).StartsWith([IO.Path]::GetFullPath($scratch)+'\'))){throw 'Fixture path mismatch'}
+[IO.Directory]::Delete($link)
+$source = [IO.File]::ReadAllText((Join-Path $root 'package\Chrome.Profile.psm1'))
+Assert ($source -notmatch 'Remove-Item -LiteralPath \$data|function Initialize-SfitChromeProfile|function Update-SfitChromeShortcuts') 'Destructive profile reset/shortcut rewrite remains exposed'
 # All registry mutations below use our own disposable HKCU test key.
 $testKey = 'HKCU:\Software\SchoolLabTests\' + [guid]::NewGuid().ToString('N')
 $id = 'gojbmoppgoeccpfgiigckholndeagdcm'
@@ -175,6 +137,13 @@ try {
     Remove-ItemProperty -LiteralPath $foreign -Name ExtensionDeveloperModeSettings
     New-ItemProperty -LiteralPath $foreign -Name UserDataDir -Value 'C:\ExternalChromeData' -PropertyType String | Out-Null
     Throws { Assert-SfitUnpackedPolicies $id @($foreign) }
+    # Force-pinning must fail explicitly without weakening administrator policy.
+    $pinKey = Join-Path $testKey 'pin-policy'
+    New-Item -Path $pinKey | Out-Null
+    New-ItemProperty -LiteralPath $pinKey -Name ExtensionSettings -Value '{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{"toolbar_pin":"force_pinned"}}' -PropertyType String | Out-Null
+    Throws { Assert-SfitToolbarPolicies @($idA) @($pinKey) }
+    Assert-SfitToolbarPolicies @($idB) @($pinKey); $script:passed++
+    Assert (((Get-Item $pinKey).GetValue('ExtensionSettings') | ConvertFrom-Json).$idA.toolbar_pin -eq 'force_pinned') 'Force-pin policy was silently changed'
 } finally {
     if ($testKey -notmatch '^HKCU:\\Software\\SchoolLabTests\\[0-9a-f]{32}$') { throw 'Invalid test registry cleanup target' }
     if (Test-Path -LiteralPath $testKey) {
@@ -183,6 +152,6 @@ try {
         Remove-Item -LiteralPath $testKey -Recurse -Force
     }
 }
-@{Passed=$script:passed;PowerShell=$PSVersionTable.PSVersion.ToString();Scope='Deletion of synthetic Chrome data under the workspace only; isolated HKCU test key; no real Chrome data/policy changed';At=(Get-Date -Format o)} |
+@{Passed=$script:passed;PowerShell=$PSVersionTable.PSVersion.ToString();Scope='Read-only selection of synthetic profiles, byte-level preservation checks; isolated HKCU policy migration; no real Chrome data/policy changed';At=(Get-Date -Format o)} |
     ConvertTo-Json | Set-Content (Join-Path $scratch 'result.json') -Encoding UTF8
-Write-Host "PASS: $script:passed simple Chrome profile/migration checks. $scratch"
+Write-Host "PASS: $script:passed preserved Chrome profile/migration checks. $scratch"

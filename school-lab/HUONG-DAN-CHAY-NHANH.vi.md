@@ -1,3 +1,3 @@
-# Hướng dẫn SchoolLab 2.3.0
+# Hướng dẫn SchoolLab 2.4.0
 
 Xem [README.vi.md](README.vi.md) để biết chức năng, vị trí bộ cài, cách chạy và chỗ sửa lịch SFIT.

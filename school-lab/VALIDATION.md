@@ -148,3 +148,12 @@ Reset chỉ nhắm vào đường dẫn tuyệt đối LOCALAPPDATA\Google\Chrom
 Không xóa profile, sửa shortcut hay đổi policy Chrome thật trên máy phát triển. Cần VM nghiệm thu gói 2.3: tự hết lỗi policy do SchoolLab cũ, tự mở đúng trang và cài SFIT, mở Chrome lại chỉ có Default/SchoolLab, lịch hoạt động đúng, chạy lại đạt. Các kết quả cũ của 2.2 về backup/khóa profile chỉ là lịch sử, không mô tả hành vi hiện tại.
 
 Nguồn: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/extensions/browser/unpacked_installer.cc (hàm IsLoadingUnpackedAllowed; source đã đọc trong phiên sửa, lưu tham chiếu ở test-results/chromium-policy-review).
+
+## SchoolLab 2.4.0 — giữ nguyên Chrome profile (2026-10-30)
+
+- Bỏ hoàn toàn hàm reset/xóa Chrome User Data và đổi shortcut. Không gọi cleanup dữ liệu profile từ journal 2.3.
+- Đọc cửa sổ Chrome đang mở/gần nhất, tạo tab setup riêng, xác minh Profile Path tại chrome://version; nếu đóng Chrome thì khởi chạy last_used qua Explorer.
+- Giữ cố định HWND; không chọn cửa sổ khác khi cài. Bỏ ghim bằng toggle Pin to toolbar trên trang detail có đúng ID, không ghi file Preferences đang chạy.
+- Nạp SFIT, đợi native report mới sau thao tác Load; xác nhận SFIT detail và không ghim trong cửa sổ đó trước khi đạt. Journal schema 3 ghi profile được chọn, readiness không yêu cầu chỉ có Default.
+- Đã đạt 55 kiểm tra profile/bảo toàn từng byte/migration policy giả lập và force-pin policy; 75 kiểm tra SFIT/UI boundary; 100 kiểm tra hồi quy.
+- Các kiểm tra trên không mở/điều khiển Chrome thật, không sửa dữ liệu/policy Chrome thật của máy phát triển. Cần pilot UI Windows 10/11 với profile Default và Profile 1/2, extension đang ghim và lượt chạy lại.

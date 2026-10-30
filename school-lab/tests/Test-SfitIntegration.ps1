@@ -110,6 +110,22 @@ Throws { [SfitChromeNavigation]::Navigate($box) }
 Assert ($box.Enters -eq 0) 'Enter sent despite rejected URL'
 Assert ([SfitFakeOmnibox]::NativeInputSize() -eq $(if ([Environment]::Is64BitProcess) { 40 } else { 28 })) 'Incorrect Win32 INPUT union layout'
 
+# Profile-preserving setup uses only version/details pages in the locked window.
+foreach ($url in @('chrome://version/','chrome://extensions/?id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')) {
+    $box = [SfitFakeOmnibox]::new()
+    Assert ([SfitChromeNavigation]::NavigateTo($box,$url) -eq 'NavigationRequested') 'Internal setup navigation failed'
+    Assert ($box.Text -eq $url -and $box.Enters -eq 1) 'Setup URL was not committed exactly once'
+}
+foreach ($url in @('https://example.test','chrome://settings/','chrome://version/?bad=1','chrome://extensions/?id=invalid','chrome://extensions/?id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&bad=1')) {
+    $box = [SfitFakeOmnibox]::new()
+    Throws { [SfitChromeNavigation]::NavigateTo($box,$url) }
+    Assert ($box.Events.Count -eq 0) 'Unsafe setup URL received native actions'
+}
+Assert ([SfitChromePage]::IsPinLabel('Pin to toolbar')) 'Pin toggle label not recognized'
+$viPin = '"Ghim l\u00ean thanh c\u00f4ng c\u1ee5"' | ConvertFrom-Json
+Assert ([SfitChromePage]::IsPinLabel($viPin)) 'Vietnamese pin label not recognized'
+Assert (-not [SfitChromePage]::IsPinLabel('Remove extension')) 'Remove mistaken for pin control'
+
 # A small locked fixture exercises the schedule updater with real child PS5.1.
 $package = Join-Path $scratch 'package'; $files = Join-Path $package 'Files\ChromeExtension'
 New-Item -ItemType Directory -Path $files -Force | Out-Null

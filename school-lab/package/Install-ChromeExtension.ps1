@@ -42,32 +42,18 @@ try {
     New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
     Set-Content -LiteralPath $tracePath -Value ('SFIT setup started {0:o}; package {1}' -f $started,$lock.PackageId) -Encoding UTF8
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'")) {
-        $owner = Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid
-        if ($owner.Sid -eq $sid) { throw 'Close Chrome completely (including background Chrome processes), then run Install-ChromeExtension.cmd again. No processes were killed.' }
-    }
     $candidates = @($config.ChromeExecutable, "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
         "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")
     $chrome = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
     if (-not $chrome) { throw 'Chrome is not installed. Install Chrome Stable, then rerun this extension-only command.' }
     if ((Get-Item -LiteralPath $chrome).VersionInfo.FileMajorPart -lt 120) { throw 'Chrome 120 or newer is required.' }
-    if ($config.ChromeProfileDirectory -ne 'Default') { throw 'This classroom package uses one Default/SchoolLab Chrome profile.' }
+    if ($config.ChromeProfileDirectory -ne 'Auto') { throw 'This package selects the open Chrome profile automatically.' }
     Import-Module (Join-Path $PackageRoot 'Chrome.Profile.psm1') -Force
     $step = 'LegacyPolicyCleanup'
     $migration = Remove-SfitLegacyPolicies (Join-Path $logRoot 'policy-state.json')
     Write-SfitTrace "Old SchoolLab policies: $($migration.Status); changed=$($migration.ChangedNames -join ',')"
-    # Check unrelated administrator policies BEFORE discarding profile data.
     Assert-SfitUnpackedPolicies $extension.id
-    $step = 'ProfileReset'
-    Write-Host 'SFIT: Don profile Chrome cu, khong sao luu; chuan bi mot profile SchoolLab.' -ForegroundColor Cyan
-    $profileState = Initialize-SfitChromeProfile $env:LOCALAPPDATA (Join-Path $logRoot 'profile-state.json')
-    Write-SfitTrace "One profile ready: Default/SchoolLab; path=$($profileState.UserDataDirectory); no backup or profile-blocking policies."
-    $step = 'ChromeShortcuts'
-    $shortcutRoots = @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('CommonDesktopDirectory'),
-        [Environment]::GetFolderPath('StartMenu'),[Environment]::GetFolderPath('CommonStartMenu'),
-        (Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'))
-    $shortcuts = Update-SfitChromeShortcuts $chrome $shortcutRoots ([Environment]::GetFolderPath('Desktop'))
-    Write-SfitTrace "Chrome shortcuts normalized=$($shortcuts.Changed.Count); custom data shortcuts skipped=$($shortcuts.SkippedCustomData.Count); lab=$($shortcuts.SchoolLabShortcut)"
+    Assert-SfitToolbarPolicies @($extension.id)
     $destination = [IO.Path]::GetFullPath((Expand-LabPath $config.ChromeExtensionDirectory))
     $support = Join-Path $env:ProgramFiles 'SchoolLab\ChromeSupport'
     if (-not $destination.StartsWith($env:ProgramFiles + '\SchoolLab\',[StringComparison]::OrdinalIgnoreCase)) { throw 'ChromeExtensionDirectory must remain inside Program Files\SchoolLab.' }
@@ -84,61 +70,109 @@ try {
     $registry = 'HKLM:\SOFTWARE\Google\Chrome\NativeMessagingHosts\vn.schoollab.sfit'
     New-Item -Path $registry -Force | Out-Null
     Set-Item -LiteralPath $registry -Value $manifestPath
-    Write-LabJson (Join-Path $logRoot 'expected.json') ($plan + @{profileDirectory=$config.ChromeProfileDirectory;extensionDirectory=$destination})
-    Write-SfitTrace "Chrome=$chrome; version=$((Get-Item -LiteralPath $chrome).VersionInfo.FileVersion); profile=$($config.ChromeProfileDirectory); session=$((Get-Process -Id $PID).SessionId)"
+
+
     # Load runtime accessibility assemblies before compiling the shipped UI driver.
     Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase
     $references = @([Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.ToggleState].Assembly.Location,[Windows.DependencyObject].Assembly.Location,'System.dll')
     Add-Type -Path (Join-Path $support 'Sfit.UiAutomation.cs') -ReferencedAssemblies $references
+    $step = 'SelectProfile'
+    $sessionId = (Get-Process -Id $PID).SessionId
+    $window = [SfitUi]::ChromeWindow($sessionId)
+    if (-not $window) {
+        # Chrome closed/background-only: ask Explorer to open the last-used
+        # profile without terminating processes or changing any profile files.
+        $last = Get-SfitChromeProfileSelection $env:LOCALAPPDATA
+        $shell = New-Object -ComObject Shell.Application; $hwnd = 0
+        $desktop = $shell.Windows().FindWindowSW(0,0,8,[ref]$hwnd,1)
+        if (-not $desktop) { throw 'Cannot obtain the interactive Explorer desktop.' }
+        $arguments = '--profile-directory="{0}" --new-window --no-first-run --no-default-browser-check --force-renderer-accessibility chrome://newtab/' -f $last.ProfileDirectory
+        $desktop.Document.Application.ShellExecute($chrome,$arguments,'','open',1)
+        $openUntil = [datetime]::UtcNow.AddSeconds(30)
+        while (-not $window -and [datetime]::UtcNow -lt $openUntil) {
+            Start-Sleep -Milliseconds 500; $window = [SfitUi]::ChromeWindow($sessionId)
+        }
+    }
+    if (-not $window) { throw 'Open the intended normal Chrome profile, then rerun. No Chrome profiles were changed.' }
+    $windowHandle = [SfitUi]::WindowHandle($window)
+    Write-SfitTrace "Locked selected Chrome window=$windowHandle; title=$([SfitUi]::WindowTitle($window)); no other window/profile will be used."
+    # Open a setup tab, preserving the existing page and unsaved form content.
+    if (-not [SfitUi]::OpenSetupTab($window)) { throw 'Cannot open a setup tab in the selected Chrome window.' }
+    $selectUntil = [datetime]::UtcNow.AddSeconds(15)
+    while (-not [SfitUi]::IsNewTabSelected($window) -and [datetime]::UtcNow -lt $selectUntil) { Start-Sleep -Milliseconds 300 }
+    if (-not [SfitUi]::IsNewTabSelected($window)) { throw 'New setup tab was not selected; no existing page was navigated.' }
+    $dataPath = Get-SfitChromeDataPath $env:LOCALAPPDATA
+    $selectUntil = [datetime]::UtcNow.AddSeconds(30); $actualPath = ''
+    while (-not $actualPath -and [datetime]::UtcNow -lt $selectUntil) {
+        $window = [SfitUi]::SelectedWindow($windowHandle,$sessionId)
+        $null = [SfitUi]::EnsureSetupAddress($window,'chrome://version/')
+        $actualPath = [SfitUi]::VersionProfilePath($window,$dataPath)
+        if (-not $actualPath) { Start-Sleep -Milliseconds 400 }
+    }
+    if (-not $actualPath) { throw 'Cannot verify Profile Path at chrome://version in the selected window. No profile files were changed.' }
+    $selection = Get-SfitChromeProfileSelection $env:LOCALAPPDATA $actualPath
+    if (-not (Test-Path -LiteralPath $selection.ProfilePath -PathType Container)) { throw 'Chrome reported a missing profile directory.' }
+    $profileDirectory = $selection.ProfileDirectory
+    $pins = New-Object 'Collections.Generic.Queue[string]'
+    foreach ($id in @(Get-SfitPinnedExtensions $selection.ProfilePath | Sort-Object -Unique)) { $pins.Enqueue($id) }
+    $pinCount = $pins.Count; $unpinChanged = 0; $pinInventoryReady = $false
+    Write-LabJson (Join-Path $logRoot 'expected.json') ($plan + @{profileDirectory=$profileDirectory;profilePath=$selection.ProfilePath;extensionDirectory=$destination})
+    Write-SfitTrace "Verified profile=$profileDirectory; path=$actualPath; pinned extensions=$pinCount. All profiles, preferences and shortcuts are preserved."
+    Write-Host "SFIT: Cai vao profile dang mo [$profileDirectory], giu nguyen du lieu; bo ghim cac extension." -ForegroundColor Cyan
     $started = [datetime]::UtcNow
-    Write-Host 'SFIT: Mo Chrome va tu nap extension. Hay de may yen, khong chuyen cua so.' -ForegroundColor Cyan
-    # Ask the existing Explorer desktop to launch Chrome with its normal token.
-    $shell = New-Object -ComObject Shell.Application
-    $hwnd = 0
-    $desktop = $shell.Windows().FindWindowSW(0,0,8,[ref]$hwnd,1)
-    if (-not $desktop) { throw 'Cannot obtain the interactive Explorer desktop to launch Chrome without elevation.' }
-    $arguments = '--profile-directory="{0}" --new-window --no-first-run --no-default-browser-check --force-renderer-accessibility chrome://extensions/' -f $config.ChromeProfileDirectory
-    $desktop.Document.Application.ShellExecute($chrome,$arguments,'','open',1)
-    Write-SfitTrace 'Requested a Chrome window at chrome://extensions/ through Explorer.'
-    $deadline = [datetime]::UtcNow.AddSeconds($config.ChromeAutomationTimeoutSeconds)
+    $deadline = [datetime]::UtcNow.AddSeconds(([math]::Min(600,$config.ChromeAutomationTimeoutSeconds+10*$pinCount)))
     $step = 'Navigate'; $loaded = $false; $ready = $null
-    $lastNavigation = [datetime]::UtcNow; $recoveryWindows = 0; $lastObservation = ''; $lastProgress = [datetime]::MinValue
+    $lastObservation = ''; $lastProgress = [datetime]::MinValue; $loadedAt = [datetime]::MaxValue
+    $unpinId = ''; $unpinUntil = [datetime]::MinValue
     while ([datetime]::UtcNow -lt $deadline) {
         $heartbeat = Join-Path $logRoot 'heartbeat.json'
-        if (Test-Path -LiteralPath $heartbeat) {
+        if ($loaded -and (Test-Path -LiteralPath $heartbeat)) {
             try {
                 $candidate = Get-Content -LiteralPath $heartbeat -Raw | ConvertFrom-Json
                 if ($candidate.token -eq $token -and $candidate.packageId -eq $lock.PackageId -and $candidate.configSha256 -eq $extension.configSha256 -and
-                    $candidate.userSid -eq $sid -and ([datetimeoffset]::Parse($candidate.receivedAtUtc)).UtcDateTime -ge $started) {
+                    $candidate.userSid -eq $sid -and ([datetimeoffset]::Parse($candidate.receivedAtUtc)).UtcDateTime -ge $loadedAt) {
                     if ($candidate.phase -in @('INVALID_CONFIG','ERROR')) { throw "Extension runtime error: $($candidate.error)" }
                     if ($candidate.phase -in @('WAITING','ACTIVE','ENDED','DISABLED')) { $ready = $candidate; break }
                 }
             } catch { if ("$_" -like '*Extension runtime error:*') { throw }; Write-Verbose "Waiting for complete native report: $_" }
         }
-        $window = [SfitUi]::ChromeWindow((Get-Process -Id $PID).SessionId)
+        $window = [SfitUi]::SelectedWindow($windowHandle,$sessionId)
         if ($window) {
             if ($step -in @('Navigate','DeveloperMode','Load')) {
                 $page = [SfitUi]::EnsureExtensionsPage($window)
                 if ($page -eq 'Ready') {
-                    $lastNavigation = [datetime]::UtcNow
                     if ($step -eq 'Navigate') { $step = 'DeveloperMode'; Write-SfitTrace 'Confirmed chrome://extensions/ AND the loaded Extensions document.' }
-                    if ($step -eq 'DeveloperMode' -and [SfitUi]::EnableDeveloperMode($window)) { $step = 'Load'; Write-SfitTrace 'Load unpacked is visible.' }
+                    if ($step -eq 'DeveloperMode' -and [SfitUi]::EnableDeveloperMode($window)) {
+                        if (-not $pinInventoryReady) {
+                            # Include live extension IDs as Chrome may not yet
+                            # have flushed newly pinned icons to Preferences.
+                            $ids = @(@($pins.ToArray()) + @([SfitUi]::ExtensionIds($window)) | Sort-Object -Unique)
+                            Assert-SfitToolbarPolicies $ids
+                            $pins.Clear(); foreach ($id in $ids) { $pins.Enqueue($id) }
+                            $pinInventoryReady = $true
+                            $deadline = [datetime]::UtcNow.AddSeconds([math]::Min(600,$config.ChromeAutomationTimeoutSeconds+10*$pins.Count))
+                            Write-SfitTrace "Live extension/pin inventory=$($pins.Count)."
+                        }
+                        $step = if ($pins.Count) {'Unpin'} else {'Load'}
+                        Write-SfitTrace 'Developer mode ready; preparing unpin/load.'
+                    }
                     elseif ($step -eq 'Load' -and [SfitUi]::ClickLoad($window)) { $step = 'Folder'; Write-SfitTrace 'Load unpacked dispatched; waiting for native folder dialog.' }
                 } else {
                     $step = 'Navigate'
                     $observation = "$page; window=$([SfitUi]::WindowTitle($window))"
                     if ($observation -ne $lastObservation) { Write-SfitTrace $observation; $lastObservation = $observation }
-                    # The driver selects an existing Extensions tab, or directly
-                    # sets the native omnibox and commits Enter after focus checks.
-                    # A dedicated window is only a bounded secondary recovery.
-                    if ($recoveryWindows -lt 2 -and ([datetime]::UtcNow-$lastNavigation).TotalSeconds -ge 10) {
-                        $desktop.Document.Application.ShellExecute($chrome,$arguments,'','open',1)
-                        $recoveryWindows++; $lastNavigation = [datetime]::UtcNow
-                        Write-SfitTrace "Requested recovery window $recoveryWindows at chrome://extensions/."
-                    }
                 }
+            } elseif ($step -eq 'Unpin') {
+                if (-not $pins.Count) { $step = 'Navigate'; continue }
+                $id = $pins.Peek()
+                if ($unpinId -ne $id) { $unpinId = $id; $unpinUntil = [datetime]::UtcNow.AddSeconds(25) }
+                if ([datetime]::UtcNow -ge $unpinUntil) { throw "Cannot verify/unpin extension $id in the selected profile within 25 seconds." }
+                $null = [SfitUi]::EnsureSetupAddress($window,('chrome://extensions/?id='+$id))
+                $pinState = [SfitUi]::UnpinExtension($window,$id)
+                if ($pinState -eq 'Changed') { $unpinChanged++; Write-SfitTrace "Unpinned extension=$id" }
+                if ($pinState -in @('Unpinned','NotPinnable')) { $null = $pins.Dequeue(); $step = if ($pins.Count) {'Unpin'} else {'Navigate'} }
             } elseif ($step -eq 'Folder' -and [SfitUi]::SelectFolder($window,$destination)) {
-                $step = 'Verify'; $loaded = $true; Write-SfitTrace 'Selected the local extension folder; waiting for a fresh native report.'
+                $step = 'Verify'; $loadedAt = [datetime]::UtcNow; $loaded = $true; Write-SfitTrace 'Selected the local extension folder; waiting for a fresh native report.'
             }
         } elseif (([datetime]::UtcNow-$lastProgress).TotalSeconds -ge 5) {
             Write-SfitTrace 'Waiting for a visible Chrome browser window.'
@@ -147,12 +181,25 @@ try {
         Start-Sleep -Milliseconds 500
     }
     if (-not $ready) {
-        throw "Chrome UI automation timed out at $step. No fresh extension handshake was received. See $logRoot. Close Chrome and rerun."
+        throw "Chrome UI automation timed out at $step. No fresh extension handshake was received. See $logRoot. Keep the intended Chrome profile open and rerun."
     }
+    # Verify the target profile really contains SFIT, and leave SFIT unpinned.
+    # This also prevents a heartbeat from another profile alone from succeeding.
+    $step = 'UnpinSFIT'; $pinUntil = [datetime]::UtcNow.AddSeconds(30); $sfitUnpinned = $false
+    while (-not $sfitUnpinned -and [datetime]::UtcNow -lt $pinUntil) {
+        $window = [SfitUi]::SelectedWindow($windowHandle,$sessionId)
+        $null = [SfitUi]::EnsureSetupAddress($window,('chrome://extensions/?id='+$extension.id))
+        $state = [SfitUi]::UnpinExtension($window,$extension.id)
+        if ($state -eq 'Changed') { $unpinChanged++ }
+        if ($state -eq 'Unpinned') { $sfitUnpinned = $true } else { Start-Sleep -Milliseconds 400 }
+    }
+    if (-not $sfitUnpinned) { throw 'SFIT detail/pin state was not verified in the selected profile.' }
+    Write-LabJson (Join-Path $logRoot 'profile-state.json') @{Schema=3;Status='Ready';UserSid=$sid;UserDataDirectory=$selection.UserDataDirectory;
+        ProfileDirectory=$profileDirectory;ProfilePath=$selection.ProfilePath;ProfileLayout='Preserved';Unpinned=$true;At=(Get-Date -Format o)}
     Write-LabJson (Join-Path $logRoot 'result.json') @{Status='Passed';PackageId=$lock.PackageId;ExtensionId=$extension.id;Version=$extension.version;ConfigSha256=$extension.configSha256;
-        Phase=$ready.phase;ProfileDirectory=$config.ChromeProfileDirectory;UserSid=$sid;At=(Get-Date -Format o);ElapsedSeconds=([datetime]::UtcNow-$started).TotalSeconds;Scope='Selected Chrome profile only';UiLoadPerformed=$loaded;
-        ProfilePrepared=$true;ProfileLayout='OneDefault_NoBackup';LegacyPolicyCleanup=$migration.Status;ChromeShortcut=$shortcuts.SchoolLabShortcut;UninstallProtection='NotAvailable_OfflineUnpacked'}
-    Write-Host "SFIT DA XAC NHAN: $($ready.phase), profile $($config.ChromeProfileDirectory), lich $($extension.startAt) -> $($extension.endAt)" -ForegroundColor Green
+        Phase=$ready.phase;ProfileDirectory=$profileDirectory;UserSid=$sid;At=(Get-Date -Format o);ElapsedSeconds=([datetime]::UtcNow-$started).TotalSeconds;Scope='Selected Chrome profile only';UiLoadPerformed=$loaded;
+        ProfilePrepared=$true;ProfileLayout='Preserved';ProfilePath=$selection.ProfilePath;ExtensionsUnpinned=$true;UnpinChanges=$unpinChanged;LegacyPolicyCleanup=$migration.Status;UninstallProtection='NotAvailable_OfflineUnpacked'}
+    Write-Host "SFIT DA XAC NHAN: $($ready.phase), profile $profileDirectory, lich $($extension.startAt) -> $($extension.endAt)" -ForegroundColor Green
     Write-SfitTrace "Passed: fresh native report phase=$($ready.phase)."
     exit 0
 } catch {

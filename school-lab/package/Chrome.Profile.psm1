@@ -31,21 +31,6 @@ function Get-SfitChromeDataPath([string]$LocalAppDataDirectory) {
     $data
 }
 
-function Assert-SfitDeletableTree([string]$Data) {
-    # Enumerate one level at a time: do not traverse junctions while checking.
-    # Complete the check before deleting ANY part of the explicitly named tree.
-    $pending = [Collections.Generic.Stack[string]]::new(); $pending.Push($Data)
-    while ($pending.Count) {
-        $directory = $pending.Pop()
-        foreach ($item in Get-ChildItem -LiteralPath $directory -Force) {
-            $resolved = [IO.Path]::GetFullPath($item.FullName)
-            if (-not $resolved.StartsWith($Data+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Deletion target escaped Chrome User Data.' }
-            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Refuse linked Chrome data: $resolved" }
-            if ($item.PSIsContainer) { $pending.Push($resolved) }
-        }
-    }
-}
-
 function Get-SfitChromeProfiles([string]$UserDataDirectory) {
     $names = @()
     if (Test-Path -LiteralPath $UserDataDirectory) {
@@ -61,71 +46,45 @@ function Get-SfitChromeProfiles([string]$UserDataDirectory) {
     @($names | Sort-Object -Unique)
 }
 
-function Initialize-SfitChromeProfile {
-    param([string]$LocalAppDataDirectory,[string]$StatePath)
+# Read-only selection: never edit Preferences, Local State, shortcuts or profiles.
+function Get-SfitChromeProfileSelection {
+    param([string]$LocalAppDataDirectory,[string]$ProfilePath='')
     $data = Get-SfitChromeDataPath $LocalAppDataDirectory
-    $statePathFull = [IO.Path]::GetFullPath($StatePath)
-    if ($statePathFull.StartsWith($data+'\',[StringComparison]::OrdinalIgnoreCase) -or $statePathFull -ieq $data) { throw 'Profile journal must be outside Chrome data.' }
-    Assert-SfitPlainPath $statePathFull
-    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    $existing = $null
-    if (Test-Path -LiteralPath $statePathFull) {
-        $existing = Get-Content -LiteralPath $statePathFull -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($existing.UserDataDirectory -ine $data -or $existing.UserSid -ne $sid) { throw 'Profile journal belongs to another path/account.' }
-        if ($existing.Schema -eq 2 -and $existing.Status -eq 'Ready' -and (Test-Path -LiteralPath (Join-Path $data 'Default') -PathType Container)) {
-            $profiles = @(Get-SfitChromeProfiles $data)
-            if ($profiles.Count -eq 1 -and $profiles[0] -eq 'Default') { return $existing }
+    if (-not $ProfilePath) {
+        $stateFile = Join-Path $data 'Local State'
+        if (Test-Path -LiteralPath $stateFile) {
+            $state = $script:json.DeserializeObject([IO.File]::ReadAllText($stateFile))
+            if ($state.ContainsKey('profile') -and $state['profile'].ContainsKey('last_used')) {
+                $name = [string]$state['profile']['last_used']
+                if ($name) { $ProfilePath = Join-Path $data $name }
+            }
+        }
+        if (-not $ProfilePath) {
+            $names = @(Get-SfitChromeProfiles $data)
+            if ($names.Count -gt 1) { throw 'Multiple Chrome profiles with no last-used profile. Open the intended Chrome profile, then rerun.' }
+            if ($names.Count -eq 1) { $ProfilePath = Join-Path $data $names[0] }
+            else { $ProfilePath = Join-Path $data 'Default' }
         }
     }
-    $state = [pscustomobject]@{Schema=2;Status='ResetPending';UserDataDirectory=$data;UserSid=$sid;
-        ProfileDirectory='Default';ProfileName='SchoolLab';BackupEnabled=$false;At=(Get-Date -Format o)}
-    # New explicit classroom requirement: discard old Chrome data, no backup.
-    # A retry after an interrupted deletion can repeat the same scoped reset.
-    Write-SfitProfileJson $statePathFull $state
-    if (Test-Path -LiteralPath $data) {
-        Assert-SfitDeletableTree $data
-        # Native PowerShell only; absolute target was derived from LOCALAPPDATA
-        # and checked above, including all ancestors and descendant links.
-        Remove-Item -LiteralPath $data -Recurse -Force -ErrorAction Stop
-        if (Test-Path -LiteralPath $data) { throw 'Chrome data removal did not finish.' }
+    $full = [IO.Path]::GetFullPath($ProfilePath).TrimEnd('\')
+    if ([IO.Path]::GetDirectoryName($full) -ine $data -or [IO.Path]::GetFileName($full) -in @('Guest Profile','System Profile','.','..')) {
+        throw 'Unsupported Chrome profile path. Use a normal profile under the standard Chrome User Data directory.'
     }
-    New-Item -ItemType Directory -Path (Join-Path $data 'Default') -Force | Out-Null
-    Write-SfitProfileJson (Join-Path $data 'Default\Preferences') @{profile=@{name='SchoolLab';using_default_name=$false};extensions=@{pinned_extensions=@()}}
-    Write-SfitProfileJson (Join-Path $data 'Local State') @{profile=@{last_used='Default';last_active_profiles=@('Default');info_cache=@{Default=@{name='SchoolLab';is_using_default_name=$false}}}}
-    [IO.File]::WriteAllText((Join-Path $data 'First Run'),'',[Text.UTF8Encoding]::new($false))
-    $state.Status = 'Ready'; Write-SfitProfileJson $statePathFull $state
-    $state
+    Assert-SfitPlainPath $full
+    [pscustomobject]@{UserDataDirectory=$data;ProfileDirectory=[IO.Path]::GetFileName($full);ProfilePath=$full}
 }
 
-function ConvertTo-SfitDefaultProfileArguments([string]$Arguments) {
-    $pattern = '(?i)(?<!\S)(?:"--profile-directory=[^"]*"|--profile-directory=(?:"[^"]*"|\S+)|--profile-directory\s+(?:"[^"]*"|\S+))(?=\s|$)'
-    if ([regex]::IsMatch($Arguments,$pattern)) { return [regex]::Replace($Arguments,$pattern,'--profile-directory="Default"') }
-    ($Arguments.Trim() + ' --profile-directory="Default"').Trim()
-}
-
-function Update-SfitChromeShortcuts {
-    param([string]$ChromeExecutable,[string[]]$ShortcutRoots,[string]$DesktopDirectory)
-    $chrome = [IO.Path]::GetFullPath($ChromeExecutable)
-    $proxy = Join-Path (Split-Path -Parent $chrome) 'chrome_proxy.exe'
-    $shell = New-Object -ComObject WScript.Shell
-    $changed = @(); $skipped = @()
-    foreach ($root in @($ShortcutRoots | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) } | Sort-Object -Unique)) {
-        foreach ($file in Get-ChildItem -LiteralPath $root -Filter '*.lnk' -File -Recurse -Force) {
-            $link = $shell.CreateShortcut($file.FullName)
-            if (-not $link.TargetPath) { continue }
-            $target = [IO.Path]::GetFullPath($link.TargetPath)
-            if ($target -ine $chrome -and $target -ine $proxy) { continue }
-            if ($link.Arguments -match '(?i)--user-data-dir(?:=|\s)') { $skipped += $file.FullName; continue }
-            $arguments = ConvertTo-SfitDefaultProfileArguments $link.Arguments
-            if ($arguments -cne $link.Arguments) { $link.Arguments = $arguments; $link.Save(); $changed += $file.FullName }
+function Get-SfitPinnedExtensions([string]$ProfilePath) {
+    Assert-SfitPlainPath $ProfilePath
+    $path = Join-Path $ProfilePath 'Preferences'
+    if (-not (Test-Path -LiteralPath $path)) { return }
+    $prefs = $script:json.DeserializeObject([IO.File]::ReadAllText($path))
+    if ($prefs.ContainsKey('extensions') -and $prefs['extensions'].ContainsKey('pinned_extensions')) {
+        foreach ($id in @($prefs['extensions']['pinned_extensions'])) {
+            if ([string]$id -notmatch '^[a-p]{32}$') { throw 'Invalid pinned extension ID in Chrome Preferences; no preferences were modified.' }
+            [string]$id
         }
     }
-    New-Item -ItemType Directory -Path $DesktopDirectory -Force | Out-Null
-    $labPath = Join-Path $DesktopDirectory 'SchoolLab Chrome.lnk'
-    $lab = $shell.CreateShortcut($labPath)
-    $lab.TargetPath = $chrome; $lab.Arguments = '--profile-directory="Default"'
-    $lab.WorkingDirectory = Split-Path -Parent $chrome; $lab.IconLocation = $chrome + ',0'; $lab.Save()
-    [pscustomobject]@{Changed=@($changed);SkippedCustomData=@($skipped);SchoolLabShortcut=$labPath}
 }
 
 function Undo-SfitOwnedMapChanges([Collections.IDictionary]$Current,[Collections.IDictionary]$Applied,[Collections.IDictionary]$Original) {
@@ -214,4 +173,20 @@ function Assert-SfitUnpackedPolicies {
     }
 }
 
-Export-ModuleMember -Function Initialize-SfitChromeProfile,Get-SfitChromeDataPath,Get-SfitChromeProfiles,Remove-SfitLegacyPolicies,Assert-SfitUnpackedPolicies,Update-SfitChromeShortcuts,ConvertTo-SfitDefaultProfileArguments
+function Assert-SfitToolbarPolicies {
+    param([string[]]$ExtensionIds,[string[]]$RegistryRoots=@('HKLM:\SOFTWARE\Policies\Google\Chrome','HKCU:\SOFTWARE\Policies\Google\Chrome'))
+    foreach ($root in $RegistryRoots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        $raw = (Get-Item -LiteralPath $root).GetValue('ExtensionSettings',$null)
+        if (-not $raw) { continue }
+        $settings = $script:json.DeserializeObject([string]$raw)
+        foreach ($id in $ExtensionIds) {
+            $pin = ''
+            if ($settings.ContainsKey('*') -and $settings['*'].ContainsKey('toolbar_pin')) { $pin = [string]$settings['*']['toolbar_pin'] }
+            if ($settings.ContainsKey($id) -and $settings[$id].ContainsKey('toolbar_pin')) { $pin = [string]$settings[$id]['toolbar_pin'] }
+            if ($pin -eq 'force_pinned') { throw "External policy force-pins extension $id at $root. Cannot unpin without changing that administrator policy." }
+        }
+    }
+}
+
+Export-ModuleMember -Function Get-SfitChromeProfileSelection,Get-SfitPinnedExtensions,Get-SfitChromeDataPath,Get-SfitChromeProfiles,Remove-SfitLegacyPolicies,Assert-SfitUnpackedPolicies,Assert-SfitToolbarPolicies
