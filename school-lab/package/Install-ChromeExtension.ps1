@@ -47,7 +47,7 @@ try {
     $chrome = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
     if (-not $chrome) { throw 'Chrome is not installed. Install Chrome Stable, then rerun this extension-only command.' }
     if ((Get-Item -LiteralPath $chrome).VersionInfo.FileMajorPart -lt 120) { throw 'Chrome 120 or newer is required.' }
-    if ($config.ChromeProfileDirectory -ne 'Dedicated' -or $config.ChromeProfileName -ne 'OLBDB') { throw 'This package uses its dedicated OLBDB exam profile.' }
+    if ($config.ChromeProfileDirectory -ne 'Dedicated' -or $config.ChromeProfileKey -ne 'OLBDB') { throw 'This package uses its dedicated exam profile.' }
     Import-Module (Join-Path $PackageRoot 'Chrome.Profile.psm1') -Force
     $step = 'LegacyPolicyCleanup'
     $migration = Remove-SfitLegacyPolicies (Join-Path $logRoot 'policy-state.json')
@@ -55,11 +55,11 @@ try {
     Assert-SfitUnpackedPolicies $extension.id
     Assert-SfitToolbarPolicies @($extension.id)
     $step = 'PrepareOLBDB'
-    $selection = Initialize-SfitExamProfile $env:LOCALAPPDATA (Join-Path $logRoot 'olbdb-profile.json') $config.ChromeProfileName
+    $selection = Initialize-SfitExamProfile $env:LOCALAPPDATA (Join-Path $logRoot 'olbdb-profile.json') $config.ChromeProfileName $config.ChromeProfileKey
     $profileDirectory = $selection.ProfileDirectory
     $examUrl = [string]$lock.ChromeExtension.examUrl
     if (-not $examUrl) { throw 'Missing examUrl in the Chrome payload metadata.' }
-    $shortcut = New-SfitExamShortcut $chrome $profileDirectory ([Environment]::GetFolderPath('Desktop')) $examUrl $selection.ProfileName
+    $shortcut = New-SfitExamShortcut $chrome $profileDirectory ([Environment]::GetFolderPath('Desktop')) $examUrl $selection.ProfileName $selection.PreviousProfileName $config.ChromeProfileKey
     Write-SfitTrace "Dedicated profile=$profileDirectory; name=$($selection.ProfileName); reused=$($selection.Reused); shortcut=$shortcut. Existing profiles/shortcuts are untouched."
     $destination = [IO.Path]::GetFullPath((Expand-LabPath $config.ChromeExtensionDirectory))
     $support = Join-Path $env:ProgramFiles 'SchoolLab\ChromeSupport'
@@ -109,12 +109,29 @@ try {
     }
     if (-not $window) { throw 'Cannot verify the dedicated OLBDB Profile Path in a new Chrome window. No existing profile was selected or reset.' }
     Write-SfitTrace "Locked OLBDB window=$windowHandle; verified path=$($selection.ProfilePath)."
+    $step = 'ProfileDisplayName'; $nameUntil = [datetime]::UtcNow.AddSeconds(35); $nameStage = 'Edit'; $nameVerified = $false
+    while (-not $nameVerified -and [datetime]::UtcNow -lt $nameUntil) {
+        $window = [SfitUi]::SelectedWindow($windowHandle,$sessionId)
+        if ($nameStage -eq 'Version') {
+            $null = [SfitUi]::EnsureSetupAddress($window,'chrome://version/')
+            if ([SfitUi]::VersionProfilePath($window,$selection.UserDataDirectory) -ieq $selection.ProfilePath) { $nameStage = 'Confirm' }
+        } else {
+            $null = [SfitUi]::EnsureSetupAddress($window,'chrome://settings/manageProfile')
+            $name = [SfitUi]::ProfileDisplayName($window)
+            if ($name -ceq $selection.ProfileName) { $nameVerified = $true }
+            elseif ($name -and $nameStage -eq 'Edit' -and [SfitUi]::SetProfileDisplayName($window,$selection.ProfileName)) { $nameStage = 'Version' }
+        }
+        if (-not $nameVerified) { Start-Sleep -Milliseconds 400 }
+    }
+    if (-not $nameVerified) { throw 'Chrome did not confirm the saved exam profile display name.' }
+    Complete-SfitExamProfileName $env:LOCALAPPDATA (Join-Path $logRoot 'olbdb-profile.json') $selection.ProfileName $config.ChromeProfileKey
+    Write-SfitTrace "Profile display name verified=$($selection.ProfileName); shortcut=$shortcut."
     $pins = New-Object 'Collections.Generic.Queue[string]'
     foreach ($id in @(Get-SfitPinnedExtensions $selection.ProfilePath | Sort-Object -Unique)) { $pins.Enqueue($id) }
     $pinCount = $pins.Count; $unpinChanged = 0; $pinInventoryReady = $false
     Write-LabJson (Join-Path $logRoot 'expected.json') ($plan + @{profileDirectory=$profileDirectory;profilePath=$selection.ProfilePath;profileName=$selection.ProfileName;shortcut=$shortcut;chromeExecutable=$chrome;extensionDirectory=$destination})
     Write-SfitTrace "Verified dedicated profile=$profileDirectory; path=$($selection.ProfilePath); pinned extensions=$pinCount. Existing profiles are preserved."
-    Write-Host "SFIT: Cai vao profile OLBDB [$profileDirectory]; giu nguyen cac profile cu; shortcut OLBDB tren Desktop." -ForegroundColor Cyan
+    Write-Host "SFIT: Profile $($selection.ProfileName) [$profileDirectory]; shortcut tren Desktop; giu nguyen profile cu." -ForegroundColor Cyan
     $started = [datetime]::UtcNow
     $deadline = [datetime]::UtcNow.AddSeconds(([math]::Min(600,$config.ChromeAutomationTimeoutSeconds+10*$pinCount)))
     $step = 'Navigate'; $loaded = $false; $ready = $null
@@ -195,7 +212,7 @@ try {
     Write-LabJson (Join-Path $logRoot 'result.json') @{Status='Passed';PackageId=$lock.PackageId;ExtensionId=$extension.id;Version=$extension.version;ConfigSha256=$extension.configSha256;
         Phase=$ready.phase;ProfileDirectory=$profileDirectory;UserSid=$sid;At=(Get-Date -Format o);ElapsedSeconds=([datetime]::UtcNow-$started).TotalSeconds;Scope='Dedicated OLBDB Chrome profile only';UiLoadPerformed=$loaded;
         ProfilePrepared=$true;ProfileLayout='DedicatedOLBDB';ProfilePath=$selection.ProfilePath;ProfileName=$selection.ProfileName;Shortcut=$shortcut;ExamUrl=$examUrl;ExtensionsUnpinned=$true;UnpinChanges=$unpinChanged;LegacyPolicyCleanup=$migration.Status;UninstallProtection='NotAvailable_OfflineUnpacked'}
-    Write-Host "SFIT DA XAC NHAN: $($ready.phase), profile OLBDB [$profileDirectory], lich $($extension.startAt) -> $($extension.endAt)" -ForegroundColor Green
+    Write-Host "SFIT DA XAC NHAN: $($ready.phase), profile $($selection.ProfileName) [$profileDirectory], lich $($extension.startAt) -> $($extension.endAt)" -ForegroundColor Green
     Write-SfitTrace "Passed: fresh native report phase=$($ready.phase)."
     exit 0
 } catch {

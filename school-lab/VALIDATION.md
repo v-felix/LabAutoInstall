@@ -168,3 +168,11 @@ Nguồn: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/extens
 - Đạt 89 kiểm tra profile/migration/shortcut/khôi phục journal; 77 kiểm tra tích hợp SFIT; 19 bài kiểm tra runtime SFIT; 100 kiểm tra hồi quy.
 - Chrome 156.0.8078.48 headless với user-data-dir cô lập đã xác nhận mở đúng thư mục mới, giữ tên OLBDB, đăng ký OLBDB vào info_cache và không đổi Preferences của profile cũ. Kết quả ở test-results/olbdb-engine-ab06f0f12e8344d18a4678a1f0799f86/result.json, không đóng gói.
 - Không cài/gỡ extension hay tạo profile trên tài khoản Chrome thật của máy phát triển. Chưa chạy installer UI Load unpacked thực tế trên Windows 10/11; vẫn cần pilot trước khi nhân rộng.
+
+## SchoolLab 2.5.1 — tên profile tiếng Việt (2026-10-31)
+
+- Tên hiển thị và shortcut: Olympic Đặc Biệt 2026. Giữ mã nội bộ OLBDB và journal cũ để chuyển tên từ 2.5.0 mà không tạo profile mới/reset.
+- Cho phép tên có dấu/khoảng trắng; UTF-8 BOM cho LabConfig.psd1 bảo đảm Windows PowerShell 5.1 đọc đúng. Seed profile mới với tên tiếng Việt; profile cũ đổi qua chrome://settings/manageProfile, blur và kiểm tra lại sau vòng điều hướng trước khi ghi nhận.
+- Thêm IShellLinkW/IPersistFile cho shortcut Unicode: WScript.Shell không đọc được một số tên tiếng Việt trên máy dùng code page ANSI. Chỉ chuyển tên shortcut cũ khi target/profile đã được xác minh, không sửa shortcut không thuộc bộ cài.
+- Đạt 98 kiểm tra profile/shortcut/migration, 81 kiểm tra SFIT/boundary UI và 100 kiểm tra hồi quy. Chrome 156 headless trong user-data-dir cô lập đã lưu tên Olympic Đặc Biệt 2026 đúng vào Preferences/Local State và giữ nguyên profile cũ (test-results/profile-name-engine-cfb5911801394404b72efc76d0a3db17).
+- Giữ https://utcoj.info/ và lịch 01/11/2026 13:00–17:00 +07:00, không cần nhập code. Chưa chạy luồng UI rename/load unpacked trên VM thật; cần pilot trước khi triển khai rộng.

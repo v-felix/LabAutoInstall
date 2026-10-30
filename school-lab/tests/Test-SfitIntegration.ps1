@@ -111,7 +111,7 @@ Assert ($box.Enters -eq 0) 'Enter sent despite rejected URL'
 Assert ([SfitFakeOmnibox]::NativeInputSize() -eq $(if ([Environment]::Is64BitProcess) { 40 } else { 28 })) 'Incorrect Win32 INPUT union layout'
 
 # Profile-preserving setup uses only version/details pages in the locked window.
-foreach ($url in @('chrome://version/','chrome://extensions/?id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')) {
+foreach ($url in @('chrome://version/','chrome://extensions/?id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','chrome://settings/manageProfile')) {
     $box = [SfitFakeOmnibox]::new()
     Assert ([SfitChromeNavigation]::NavigateTo($box,$url) -eq 'NavigationRequested') 'Internal setup navigation failed'
     Assert ($box.Text -eq $url -and $box.Enters -eq 1) 'Setup URL was not committed exactly once'
@@ -125,6 +125,8 @@ Assert ([SfitChromePage]::IsPinLabel('Pin to toolbar')) 'Pin toggle label not re
 $viPin = '"Ghim l\u00ean thanh c\u00f4ng c\u1ee5"' | ConvertFrom-Json
 Assert ([SfitChromePage]::IsPinLabel($viPin)) 'Vietnamese pin label not recognized'
 Assert (-not [SfitChromePage]::IsPinLabel('Remove extension')) 'Remove mistaken for pin control'
+Assert ([SfitChromePage]::IsProfileNameLabel('Profile name')) 'Profile name label not recognized'
+Assert (-not [SfitChromePage]::IsProfileNameLabel('Search settings')) 'Search box mistaken for profile name'
 
 # A small locked fixture exercises the schedule updater with real child PS5.1.
 $package = Join-Path $scratch 'package'; $files = Join-Path $package 'Files\ChromeExtension'

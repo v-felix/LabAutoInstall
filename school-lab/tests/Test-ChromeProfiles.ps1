@@ -95,6 +95,23 @@ Assert ((Split-Path -Leaf $shortcut) -eq 'OLBDB.lnk') 'Wrong shortcut name'
 Assert ($link.TargetPath -ieq $fakeChrome) 'Shortcut targets wrong Chrome'
 Assert ($link.Arguments -ceq ('--profile-directory="{0}" --new-window "https://utcoj.info/"' -f $exam.ProfileDirectory)) 'Shortcut opens wrong profile/site'
 Assert ((New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $desktop 'https://utcoj.info/' 'OLBDB') -eq $shortcut) 'Shortcut retry not idempotent'
+$display='"Olympic \u0110\u1eb7c Bi\u1ec7t 2026"' | ConvertFrom-Json
+$configuration=Import-PowerShellDataFile (Join-Path $root 'package\LabConfig.psd1')
+Assert ($configuration.ChromeProfileName -ceq $display) 'PowerShell 5.1 did not decode the Vietnamese display name'
+$rename=Initialize-SfitExamProfile $local $examJournal $display
+Assert ($rename.Reused -and $rename.ProfileDirectory -eq $exam.ProfileDirectory -and $rename.PreviousProfileName -eq 'OLBDB') 'Name change created a duplicate profile instead of reusing OLBDB'
+Assert ((Get-FileHash -LiteralPath (Join-Path $exam.ProfilePath 'Preferences')).Hash -eq $examHash) 'Name migration rewrote live Chrome Preferences'
+$renamedShortcut=New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $desktop 'https://utcoj.info/' $display 'OLBDB'
+Assert ((Split-Path -Leaf $renamedShortcut) -ceq ($display+'.lnk') -and -not (Test-Path -LiteralPath $shortcut)) 'Owned Desktop shortcut was not renamed to Vietnamese'
+Assert ([SfitShortcutFile]::Read($renamedShortcut).Arguments -ceq $link.Arguments) 'Shortcut rename changed the exam profile/site'
+Assert ((New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $desktop 'https://utcoj.info/' $display $display) -ceq $renamedShortcut) 'Unicode shortcut cannot be read/updated on rerun'
+Complete-SfitExamProfileName $local $examJournal $display
+$renameAgain=Initialize-SfitExamProfile $local $examJournal $display
+Assert ($renameAgain.Reused -and $renameAgain.PreviousProfileName -ceq $display) 'Verified name was not recorded for idempotent reruns'
+Assert ((Get-FileHash -LiteralPath (Join-Path $exam.ProfilePath 'Preferences')).Hash -eq $examHash) 'Name bookkeeping changed existing Chrome preferences'
+$freshUnicode=Initialize-SfitExamProfile (Join-Path $scratch 'Unicode\Local') (Join-Path $scratch 'Unicode\exam.json') $display
+$unicodePrefs=Get-Content -LiteralPath (Join-Path $freshUnicode.ProfilePath 'Preferences') -Raw -Encoding UTF8 | ConvertFrom-Json
+Assert ($unicodePrefs.profile.name -ceq $display) 'Fresh Vietnamese profile display name was not seeded correctly'
 Throws { New-SfitExamShortcut $fakeChrome 'Default' $desktop 'https://utcoj.info/' 'OLBDB' }
 Throws { New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $desktop 'https://password@utcoj.info/' 'OLBDB' }
 $conflictDesktop=Join-Path $scratch 'UnrelatedDesktop';New-Item -ItemType Directory -Path $conflictDesktop | Out-Null

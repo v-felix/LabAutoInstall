@@ -99,17 +99,17 @@ try {
         $profile = Get-Content -LiteralPath (Join-Path $chromeRoot 'profile-state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($profile.Schema -ne 4 -or $profile.Status -ne 'Ready' -or $profile.UserSid -ne $sid -or
             $profile.UserDataDirectory -ine (Get-SfitChromeDataPath $env:LOCALAPPDATA) -or $profile.ProfileLayout -ne 'DedicatedOLBDB' -or
-            $profile.ProfileName -ne 'OLBDB' -or -not $profile.Unpinned -or $chrome.ProfileDirectory -ne $profile.ProfileDirectory) { throw 'Dedicated OLBDB profile verification is missing.' }
+            $profile.ProfileName -cne $config.ChromeProfileName -or -not $profile.Unpinned -or $chrome.ProfileDirectory -ne $profile.ProfileDirectory) { throw 'Dedicated exam profile verification is missing.' }
         $selected = Get-SfitChromeProfileSelection $env:LOCALAPPDATA $profile.ProfilePath
         if ($selected.ProfileDirectory -ne $profile.ProfileDirectory -or -not (Test-Path -LiteralPath $selected.ProfilePath -PathType Container)) { throw 'The selected Chrome profile is missing.' }
         $exam = Get-Content -LiteralPath (Join-Path $chromeRoot 'olbdb-profile.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         $owner = Get-Content -LiteralPath (Join-Path $selected.ProfilePath 'SchoolLab.Profile.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($exam.UserSid -ne $sid -or $exam.ProfileDirectory -ne $profile.ProfileDirectory -or $owner.ProfileToken -cne $exam.ProfileToken -or $owner.UserSid -ne $sid) { throw 'OLBDB profile ownership mismatch.' }
         if (-not (Test-Path -LiteralPath $profile.Shortcut -PathType Leaf)) { throw 'Missing OLBDB desktop shortcut.' }
-        $wsh = New-Object -ComObject WScript.Shell; $link = $wsh.CreateShortcut($profile.Shortcut)
+        $link = [SfitShortcutFile]::Read($profile.Shortcut)
         $arguments = '--profile-directory="{0}" --new-window "{1}"' -f $profile.ProfileDirectory,$lock.ChromeExtension.examUrl
         if ($link.TargetPath -ine $expected.chromeExecutable -or $link.Arguments -cne $arguments) { throw 'OLBDB shortcut no longer opens the configured exam profile/site.' }
-        Write-Host "Chrome: giu nguyen profile cu; mo shortcut OLBDB de vao $($lock.ChromeExtension.examUrl) dung profile thi."
+        Write-Host "Chrome: mo shortcut $($profile.ProfileName) de vao $($lock.ChromeExtension.examUrl) dung profile thi."
     }
     Write-Host 'SAN SANG: Cai dat may va kiem tra tu dong trong tai khoan nay da dat.' -ForegroundColor Green
     Write-Host "May: $env:COMPUTERNAME | Tai khoan: $env:USERNAME"

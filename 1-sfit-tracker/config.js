@@ -1,5 +1,5 @@
 /* SỬA LỊCH Ở ĐÂY trước khi chạy Build-OfflinePackage.ps1.
- * Lịch OLBDB: 01/11/2026, 13:00-17:00 giờ Việt Nam (+07:00).
+ * Lịch Olympic Đặc Biệt 2026: 01/11/2026, 13:00-17:00 giờ Việt Nam (+07:00).
  * Test: startAt trước hiện tại 1 phút, endAt sau hiện tại 2 phút.
  * Load unpacked: sửa rồi bấm Reload extension. Không tính giờ từ lúc cài.
  * networkMode=navigation: chỉ chặn mở web ngoài; strict chặn cả API/tài nguyên.

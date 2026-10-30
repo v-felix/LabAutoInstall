@@ -314,7 +314,7 @@ function Test-LabPackage {
     $requiredIds = @(Get-LabProperty $Lock 'RequiredExtensionIds' @())
     $chrome = Get-LabProperty $Lock 'ChromeExtension'
     if ($chrome) {
-        foreach ($required in @('Install-ChromeExtension.ps1','Update-SfitSchedule.ps1','Sfit.UiAutomation.cs','Chrome.Profile.psm1',
+        foreach ($required in @('Install-ChromeExtension.ps1','Update-SfitSchedule.ps1','Sfit.UiAutomation.cs','Sfit.Shortcut.cs','Chrome.Profile.psm1',
             'Files\Sfit.NativeHost.exe','Files\ChromeExtension\manifest.json','Files\ChromeExtension\config.js','Files\ChromeExtension\background.js')) {
             if (@($Lock.Files | Where-Object Path -eq $required).Count -ne 1) { throw "Unlocked Chrome extension file: $required" }
         }

@@ -34,11 +34,16 @@ public static class SfitChromePage {
         Uri uri;
         if (!Uri.TryCreate(address,UriKind.Absolute,out uri) || uri.Scheme != "chrome" || uri.UserInfo != "" || uri.Fragment != "") return false;
         if (uri.Host == "version") return uri.AbsolutePath == "/" && uri.Query == "";
+        if (uri.Host == "settings") return uri.AbsolutePath == "/manageProfile" && uri.Query == "";
         return uri.Host == "extensions" && uri.AbsolutePath == "/" && Regex.IsMatch(uri.Query,@"^\?id=[a-p]{32}$");
     }
     public static bool IsPinLabel(string name) {
         string n = Normalize(name);
         return n == "pin to toolbar" || n == "ghim vao thanh cong cu" || n == "ghim len thanh cong cu";
+    }
+    public static bool IsProfileNameLabel(string name) {
+        string n = Normalize(name);
+        return n == "name" || n == "profile name" || n == "name your profile" || n == "ten" || n == "ten ho so" || n == "dat ten cho ho so";
     }
     public static bool IsExtensionsTab(string name) {
         string n = Normalize(name);
@@ -184,6 +189,38 @@ public static class SfitUi {
         return false;
     }); }
     public static string EnsureSetupAddress(AutomationElement w,string target) { return Bounded(delegate { return RawEnsureSetupAddress(w,target); }); }
+    public static string ProfileDisplayName(AutomationElement w) { return Bounded(delegate {
+        var edit = ProfileNameEdit(w); object p;
+        return edit != null && edit.TryGetCurrentPattern(ValuePattern.Pattern,out p) ? ((ValuePattern)p).Current.Value : "";
+    }); }
+    public static bool SetProfileDisplayName(AutomationElement w,string name) { return Bounded(delegate {
+        var edit = ProfileNameEdit(w); object p;
+        if (edit == null || !edit.TryGetCurrentPattern(ValuePattern.Pattern,out p)) return false;
+        if (!edit.Current.IsEnabled || ((ValuePattern)p).Current.IsReadOnly) throw new Exception("Chrome policy prevents profile renaming");
+        SetForegroundWindow(new IntPtr(w.Current.NativeWindowHandle));
+        edit.SetFocus(); ((ValuePattern)p).SetValue(name);
+        // Chromium saves this setting on input change/blur. Never patch live
+        // Preferences/Local State or use keyboard text injection for Unicode.
+        var address = Omnibox(w); if (address == null) throw new Exception("Cannot blur the profile name safely");
+        address.SetFocus(); return true;
+    }); }
+    static AutomationElement ProfileNameEdit(AutomationElement w) {
+        if (!String.Equals(Address(w).TrimEnd('/'),"chrome://settings/manageProfile",StringComparison.OrdinalIgnoreCase)) return null;
+        foreach (AutomationElement doc in w.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Document))) {
+            string title = SfitChromePage.Normalize(doc.Current.Name);
+            if (doc.Current.IsOffscreen || (!title.Contains("settings") && !title.Contains("cai dat"))) continue;
+            foreach (AutomationElement edit in doc.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Edit))) {
+                if (edit.Current.IsOffscreen) continue;
+                if (SfitChromePage.IsProfileNameLabel(edit.Current.Name)) return edit;
+                var parent = TreeWalker.ControlViewWalker.GetParent(edit);
+                while (parent != null && !Automation.Compare(parent,doc)) {
+                    if (parent.Current.AutomationId == "nameInput") return edit;
+                    parent = TreeWalker.ControlViewWalker.GetParent(parent);
+                }
+            }
+        }
+        return null;
+    }
     public static string VersionProfilePath(AutomationElement w,string userDataDirectory) { return Bounded(delegate {
         if (!String.Equals(Address(w).TrimEnd('/'),"chrome://version",StringComparison.OrdinalIgnoreCase)) return "";
         var docs = w.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Document));

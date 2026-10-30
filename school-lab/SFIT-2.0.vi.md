@@ -1,11 +1,11 @@
-# SFIT Tracker 2.0 — SchoolLab 2.5.0
+# SFIT Tracker 2.0 — SchoolLab 2.5.1
 
 SFIT tự kiểm soát tab/trang thi theo lịch, không có ô nhập code vào thi hoặc tạo phiên.
 
 - Trang thi: **https://utcoj.info/**; allowedHosts chỉ có **utcoj.info**.
 - Lịch đã đặt: **01/11/2026, 13:00–17:00, giờ Việt Nam (+07:00)**.
-- SchoolLab giữ nguyên profile cũ, tạo/reuse profile riêng **OLBDB**, cài SFIT trên đó và tạo shortcut **OLBDB** trên Desktop.
-- Chạy Install-ChromeExtension.cmd bằng Administrator, để máy yên lúc tự cài. Chỉ đạt khi SFIT DA XAC NHAN, mã 0. Ngày thi mở shortcut OLBDB, không cần cắm USB.
+- SchoolLab giữ nguyên profile cũ, tạo/reuse profile riêng **Olympic Đặc Biệt 2026**, cài SFIT trên đó và tạo shortcut **Olympic Đặc Biệt 2026** trên Desktop.
+- Chạy Install-ChromeExtension.cmd bằng Administrator, để máy yên lúc tự cài. Chỉ đạt khi SFIT DA XAC NHAN, mã 0. Ngày thi mở shortcut Olympic Đặc Biệt 2026, không cần cắm USB.
 
 ## Chỉnh lịch
 
@@ -30,6 +30,6 @@ Giữ múi giờ +07:00, giờ 24 tiếng, endAt sau startAt và đồng hồ m�
 - Giữ bài đang làm khi hết giờ. Chỉ đóng tab mới phát sinh trong giờ thi, không xóa hàng loạt tab đã tồn tại.
 - Chỉ kiểm soát profile cài SFIT; không khóa các profile, trình duyệt, ứng dụng khác hoặc chống quyền Administrator.
 
-Log: %LOCALAPPDATA%/SchoolLab/Chrome. Native bridge xác minh ID/SID/token/version/hash lịch và báo cáo mới; script phải xác nhận đúng profile OLBDB và không ghim trước khi đạt. Không mở cổng mạng hoặc gửi log ra Internet.
+Log: %LOCALAPPDATA%/SchoolLab/Chrome. Native bridge xác minh ID/SID/token/version/hash lịch và báo cáo mới; script phải xác nhận đúng profile Olympic Đặc Biệt 2026 và không ghim trước khi đạt. Không mở cổng mạng hoặc gửi log ra Internet.
 
 Check-LabReady toàn bộ cần báo cáo cùng PackageId. Khi chỉ cập nhật SFIT, dùng SFIT DA XAC NHAN/mã 0 để xác nhận riêng bước này. Chi tiết: [README.vi.md](README.vi.md), [CHROME-PROFILE-USB.vi.md](CHROME-PROFILE-USB.vi.md).
