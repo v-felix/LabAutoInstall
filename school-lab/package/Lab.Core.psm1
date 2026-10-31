@@ -306,7 +306,7 @@ function Test-LabPackage {
             throw "SHA256 mismatch: $($item.Path)"
         }
     }
-    foreach ($required in @('LabConfig.psd1','Lab.Core.psm1','Invoke-AppDeployToolkit.ps1','Initialize-LabUser.ps1',
+    foreach ($required in @('LabConfig.psd1','Lab.Core.psm1','Reboot.Core.psm1','Start-Lab.ps1','Check-LabReady.ps1','Invoke-AppDeployToolkit.ps1','Initialize-LabUser.ps1',
         'PSAppDeployToolkit\PSAppDeployToolkit.psd1', $Lock.Components.Jdk.File,
         $Lock.Components.Python.File, $Lock.Components.VSCode.File)) {
         if (@($Lock.Files | Where-Object Path -eq $required).Count -ne 1) { throw "Unlocked required file: $required" }

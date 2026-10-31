@@ -1,4 +1,4 @@
-# Chrome/SFIT — SchoolLab 2.5.1
+# Chrome/SFIT — SchoolLab 2.6.0
 
 - Giữ nguyên toàn bộ profile và dữ liệu đang có, không reset/xóa hoặc chiếm một profile cũ có tên Olympic Đặc Biệt 2026.
 - Tạo profile riêng tên Olympic Đặc Biệt 2026 với thư mục duy nhất dưới Chrome User Data. Ghi journal/marker sở hữu; chạy lại dùng cùng thư mục, không sửa Preferences của profile đã tồn tại.
@@ -14,4 +14,4 @@ Log: %LOCALAPPDATA%/SchoolLab/Chrome. olbdb-profile.json ghi profile do SchoolLa
 
 Đã có kiểm tra fixture bảo toàn từng byte, chạy lại, shortcut, lịch không cần code và Chrome thật headless trong user-data-dir cô lập. Luồng UI Load unpacked vẫn cần thử trên máy ảo Windows 10/11 trước khi triển khai rộng.
 
-Nếu đã cài 2.5.0 với tên OLBDB, chạy lại Install-ChromeExtension.cmd của 2.5.1 để đổi tên profile và shortcut thuộc bộ cài sang Olympic Đặc Biệt 2026. Thư mục/mã nội bộ OLBDB được giữ ổn định để không tạo thêm profile hoặc mất dữ liệu; việc đổi tên profile đang chạy thực hiện qua giao diện Chrome.
+Nếu đã cài 2.5.0 với tên OLBDB, chạy lại Install-ChromeExtension.cmd của 2.6.0 để đổi tên profile và shortcut thuộc bộ cài sang Olympic Đặc Biệt 2026. Thư mục/mã nội bộ OLBDB được giữ ổn định để không tạo thêm profile hoặc mất dữ liệu; việc đổi tên profile đang chạy thực hiện qua giao diện Chrome.

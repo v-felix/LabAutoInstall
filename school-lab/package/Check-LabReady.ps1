@@ -5,6 +5,7 @@ param([string]$PackageRoot = '')
 $ErrorActionPreference = 'Stop'
 if (-not $PackageRoot) { $PackageRoot = $PSScriptRoot }
 try {
+    Import-Module (Join-Path $PackageRoot 'Lab.Core.psm1') -Force
     $lock = Get-Content -LiteralPath (Join-Path $PackageRoot 'package-lock.json') -Raw | ConvertFrom-Json
     $machineLogRoot = Join-Path $env:ProgramData "SchoolLab\Logs\$env:COMPUTERNAME"
     $matches = @()
@@ -45,6 +46,12 @@ try {
         $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
         if ($boot.ToUniversalTime() -le ([datetimeoffset]::Parse($machine.FinishedAt)).UtcDateTime) {
             Write-Host 'CAN KHOI DONG LAI: Cai dat da xong, hay Restart va dang nhap lai tai khoan dung trong lop.' -ForegroundColor Yellow
+            exit 3010
+        }
+        $pending = @(Get-LabPendingReboot)
+        if ($pending.Count) {
+            Write-Host 'CHUA SAN SANG: Windows van bao can restart. Xem nguyen nhan, khong tu restart lap.' -ForegroundColor Yellow
+            Write-Host ($pending -join ', ')
             exit 3010
         }
     }

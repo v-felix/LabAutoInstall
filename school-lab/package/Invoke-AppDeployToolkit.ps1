@@ -63,6 +63,10 @@ try {
     $report.PackageId = $lock.PackageId
     $pending = @(Get-LabPendingReboot)
     $report.PendingRebootAtStart = $pending
+    if ($pending.Count) {
+        $report.RebootRequired = $true
+        Write-Warning ('Windows has a pending restart: ' + ($pending -join ', ') + '. The launcher will restart only after ALL setup steps pass.')
+    }
     if ($pending.Count -and $config.BlockOnPendingReboot) {
         $report.RebootRequired = $true
         $exitCode = 3010

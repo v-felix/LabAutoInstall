@@ -1,4 +1,4 @@
-# SchoolLab 2.5.1 — bộ cài offline phòng tin học
+# SchoolLab 2.6.0 — bộ cài offline phòng tin học
 
 ## Chức năng chính
 
@@ -7,18 +7,20 @@
 - Giữ nguyên tất cả profile Chrome cũ. Tạo profile mới **Olympic Đặc Biệt 2026**, cài SFIT vào đó, bỏ ghim extension trong Olympic Đặc Biệt 2026; không sửa dữ liệu/shortcut của profile cũ.
 - Tạo shortcut **Olympic Đặc Biệt 2026** trên Desktop để mở đúng profile và **https://utcoj.info/**. Chạy lại dùng lại profile SchoolLab đã tạo, không tạo trùng/reset.
 - Thi **01/11/2026, 13:00–17:00 giờ Việt Nam**. SFIT tự áp dụng/hết giờ tự ngừng; **không nhập code vào thi** hoặc tạo phiên.
-- Kiểm tra phần mềm, ghi log, bỏ qua thành phần đã đúng khi chạy lại và xử lý mã khởi động lại.
+- Kiểm tra phần mềm, ghi log, bỏ qua thành phần đã đúng khi chạy lại. **Chỉ tự restart cuối cùng nếu cần**, sau khi phần mềm, VS Code và SFIT đều cài thành công.
 
 ## Vị trí
 
 | Nội dung | Vị trí |
 | --- | --- |
-| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.5.1-20261031` trong repo |
+| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.6.0-20261031` trong repo |
 | Installer và extension offline | `Files\` trong bộ cài |
 | SFIT được cài trên máy trạm | `%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB` |
 | Profile Olympic Đặc Biệt 2026 | Một thư mục riêng `SchoolLab-OLBDB-...` trong `%LOCALAPPDATA%\Google\Chrome\User Data`; dùng shortcut Desktop để mở |
 | Log phần mềm | `%ProgramData%\SchoolLab\Logs\<Tên máy>` |
 | Log SFIT và thông tin profile/shortcut | `%LOCALAPPDATA%\SchoolLab\Chrome` |
+| Trạng thái kiểm tra sau restart | `%ProgramFiles%\SchoolLab\Resume\*.json` |
+| Log kiểm tra sau restart | `%ProgramData%\SchoolLab\Logs\<Tên máy>\Bootstrap\after-restart-*.log` |
 
 ## Sửa giờ/trang thi
 
@@ -37,9 +39,14 @@ Giữ `enabled: true`, múi giờ `+07:00`, giờ 24 tiếng và kết thúc sau
 
 1. Đăng nhập tài khoản Windows dùng cho lớp; Chrome Stable 120+ cần có sẵn. Đóng VS Code nếu cài toàn bộ; không cần đóng/xóa các profile Chrome cũ.
 2. Chuột phải `Install-Lab.cmd` → **Run as administrator**, hoặc `Install-ChromeExtension.cmd` nếu chỉ chuẩn bị/cập nhật SFIT.
-3. Để máy yên trong lúc script mở Olympic Đặc Biệt 2026, kiểm tra Profile Path và tự Load unpacked. Chỉ đạt khi có **SFIT DA XAC NHAN**, mã **0**. Mã **3010** cần restart và làm theo thông báo.
-4. Ngày thi, mở shortcut **Olympic Đặc Biệt 2026** trên Desktop. Không cần USB hoặc nhập mã vào thi; kiểm tra đồng hồ máy trước buổi thi.
+3. Để máy yên trong lúc script mở Olympic Đặc Biệt 2026, kiểm tra Profile Path và tự Load unpacked. Có **SFIT DA XAC NHAN** là bước SFIT đã đạt.
+4. Nếu cần restart (mã **3010**), script cài xong mọi bước rồi đếm ngược **60 giây** và restart. Lưu công việc; **Ctrl+C** hủy đếm ngược. Đăng nhập lại **đúng tài khoản Windows đã cài**, script tự kiểm tra từ ổ máy, không cần USB/chạy lại bộ cài. Không cần restart thì kết thúc mã **0**.
+5. Ngày thi, mở shortcut **Olympic Đặc Biệt 2026** trên Desktop. Không cần USB hoặc nhập mã vào thi; kiểm tra đồng hồ máy trước buổi thi.
+
+Không tự đăng nhập Windows hoặc tự restart thêm lần nữa sau kiểm tra. Ứng dụng có tài liệu chưa lưu có thể chặn restart. Nếu còn lỗi/còn yêu cầu restart, xem log và chạy `Check-LabReady.cmd` sau khi xử lý. Lỗi cài đặt thật sẽ dừng, không bị bỏ qua để restart. Chế độ không có Desktop/tài khoản lớp đang đăng nhập chỉ cài phần mềm và báo các bước còn thiếu, không tự restart.
+
+Trong **nguồn** `school-lab/package/LabConfig.psd1`, `AutomaticRestart = $false` tắt tự restart; `RestartCountdownSeconds = 60` chỉnh thời gian đợi. Thay cấu hình này cần build gói mới. `Install-ChromeExtension.cmd` chạy riêng không tự restart máy.
 
 SFIT chỉ kiểm soát Olympic Đặc Biệt 2026, không khóa profile/trình duyệt khác. Không tự đổi policy quản trị bên ngoài hoặc ghi đè shortcut Olympic Đặc Biệt 2026 không thuộc bộ cài này.
 
-Nếu đã cài 2.5.0 với tên OLBDB, chạy lại Install-ChromeExtension.cmd của 2.5.1 để đổi tên profile và shortcut thuộc bộ cài sang Olympic Đặc Biệt 2026. Thư mục/mã nội bộ OLBDB được giữ ổn định để không tạo thêm profile hoặc mất dữ liệu; việc đổi tên profile đang chạy thực hiện qua giao diện Chrome.
+Nếu đã cài 2.5.0 với tên OLBDB, chạy lại Install-ChromeExtension.cmd của 2.6.0 để đổi tên profile và shortcut thuộc bộ cài sang Olympic Đặc Biệt 2026. Thư mục/mã nội bộ OLBDB được giữ ổn định để không tạo thêm profile hoặc mất dữ liệu; việc đổi tên profile đang chạy thực hiện qua giao diện Chrome.

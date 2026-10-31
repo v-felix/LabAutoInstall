@@ -1,6 +1,6 @@
 ﻿@{
     # Edit before building; the builder hashes this file into the package lock.
-    PackageRevision = '2.5.1'
+    PackageRevision = '2.6.0'
     EnableChromeExtension = $true
     ChromeExtensionDirectory = '%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB'
     ChromeExecutable = '' # Empty: discover Chrome Stable in standard locations.
@@ -11,7 +11,10 @@
     ChromeProfileName = 'Olympic Đặc Biệt 2026'
     ChromeAutomationTimeoutSeconds = 120
     MinimumFreeGB = 7
-    BlockOnPendingReboot = $true
+    # Continue pending-reboot machines; restart ONLY after every setup step passes.
+    BlockOnPendingReboot = $false
+    AutomaticRestart = $true
+    RestartCountdownSeconds = 60
     InstallerTimeoutMinutes = 45
     # Existing installations are reused only when their exact locked version matches.
     # A newer managed version is never silently downgraded.
