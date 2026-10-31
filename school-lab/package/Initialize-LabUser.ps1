@@ -15,7 +15,7 @@ try {
     try { $held = $mutex.WaitOne(10000) } catch [Threading.AbandonedMutexException] { $held = $true }
     if (-not $held) { Write-Host 'Account setup is already running. Wait, then run Check-LabReady.cmd.'; exit 69021 }
     # Called at logon, or immediately by the launcher only after verifying that
-    # the current SID owns Explorer in this session. SYSTEM never initializes HKCU.
+    # the current SID matches the native desktop/logon session. SYSTEM never initializes HKCU.
     $settings = Get-Content -LiteralPath $SettingsPath -Raw | ConvertFrom-Json
     Add-Content -LiteralPath $log -Value "$(Get-Date -Format o) START $env:USERNAME package=$($settings.PackageId)"
     $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')

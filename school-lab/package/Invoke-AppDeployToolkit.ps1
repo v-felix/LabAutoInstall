@@ -253,7 +253,7 @@ try {
         throw 'SupportDirectory must be inside Program Files.'
     }
     New-Item -ItemType Directory -Path (Join-Path $support 'Extensions') -Force | Out-Null
-    foreach ($file in @('Lab.Core.psm1','Initialize-LabUser.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $support -Force }
+    foreach ($file in @('Lab.Core.psm1','Session.Context.cs','Initialize-LabUser.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $support -Force }
     $extensions = @()
     foreach ($extension in $lock.Extensions) {
         $file = Resolve-LabPackagePath $PSScriptRoot $extension.File

@@ -35,12 +35,18 @@ try {
         if (-not $admin) { $options.Verb = 'RunAs' }
         exit (Start-Process @options).ExitCode
     }
-    if (-not (Test-LabClassroomContext)) { throw 'Sign into the classroom account on an unlocked desktop. SYSTEM / a different administrator cannot initialize this Chrome profile.' }
     $mutex = [Threading.Mutex]::new($false,'Global\SchoolLab-Chrome-Installer')
     try { $held = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $held = $true }
     if (-not $held) { throw 'Chrome extension setup is already running.' }
     New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
     Set-Content -LiteralPath $tracePath -Value ('SFIT setup started {0:o}; package {1}' -f $started,$lock.PackageId) -Encoding UTF8
+    $step = 'AccountContext'
+    $context = Wait-LabClassroomContext -TimeoutSeconds 15
+    $contextPath = Join-Path $logRoot 'classroom-context.json'
+    Write-LabJson $contextPath $context
+    Write-SfitTrace "Desktop account: $($context.Status); method=$($context.Method)"
+    if (-not $context.Ready) { throw "$($context.Message) Details: $contextPath" }
+    $step = 'Preflight'
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $candidates = @($config.ChromeExecutable, "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
         "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")

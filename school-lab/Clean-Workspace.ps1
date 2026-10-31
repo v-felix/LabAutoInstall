@@ -5,13 +5,14 @@ param([switch]$Apply)
 $ErrorActionPreference='Stop'
 try {
     $workspaceRoot=[IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd('\')
-    $currentRelease=Join-Path $workspaceRoot 'school-lab\dist\SchoolLab-2.6.2-20261031'
+    $currentRelease=Join-Path $workspaceRoot 'school-lab\dist\SchoolLab-2.6.3-20261031'
     $relativeTargets=@(
         'school-lab\dist\SchoolLab-2.4.0-20261030'
         'school-lab\dist\SchoolLab-2.5.0-20261030'
         'school-lab\dist\SchoolLab-2.5.1-20261031'
         'school-lab\dist\SchoolLab-2.6.0-20261031'
         'school-lab\dist\SchoolLab-2.6.1-20261031'
+        'school-lab\dist\SchoolLab-2.6.2-20261031'
         'school-lab\test-results'
     )
     function Assert-PlainPath([string]$Path) {
@@ -25,13 +26,13 @@ try {
     }
     Assert-PlainPath $currentRelease
     if(-not (Test-Path -LiteralPath (Join-Path $currentRelease 'package-lock.json') -PathType Leaf)){
-        throw 'The current 2.6.2 offline release is missing. No old builds were deleted.'
+        throw 'The current 2.6.3 offline release is missing. No old builds were deleted.'
     }
     Import-Module (Join-Path $PSScriptRoot 'package\Lab.Core.psm1') -Force
     $lock=Get-Content -LiteralPath (Join-Path $currentRelease 'package-lock.json') -Raw|ConvertFrom-Json
     Test-LabPackage $currentRelease $lock
     $config=Import-PowerShellDataFile (Join-Path $currentRelease 'LabConfig.psd1')
-    if($config.PackageRevision -ne '2.6.2'){throw 'Unexpected current release version.'}
+    if($config.PackageRevision -ne '2.6.3'){throw 'Unexpected current release version.'}
 
     # Validate ALL targets before removing anything. Never follow junctions,
     # accept arbitrary paths, or operate outside this checkout.

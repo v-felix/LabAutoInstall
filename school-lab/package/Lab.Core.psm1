@@ -221,15 +221,54 @@ function Write-LabJson {
     Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 
-function Test-LabClassroomContext {
-    $sessionId = (Get-Process -Id $PID).SessionId
-    if ($sessionId -eq 0) { return $false }
-    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    foreach ($shell in @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe' AND SessionId=$sessionId")) {
-        $owner = Invoke-CimMethod -InputObject $shell -MethodName GetOwnerSid
-        if ($owner.ReturnValue -eq 0 -and $owner.Sid -eq $sid) { return $true }
+function Resolve-LabClassroomContext {
+    param($Snapshot)
+    $sid=[string]$Snapshot.CurrentSid
+    $status='Unverified';$method='';$message='Windows desktop identity could not be verified.'
+    if($Snapshot.SessionId -le 0 -or $sid -in @('S-1-5-18','S-1-5-19','S-1-5-20')){
+        $status='ServiceSession';$message='Run from the signed-in classroom desktop, not SYSTEM or session 0.'
+    } elseif($sid -notmatch '^S-1-\d+(?:-\d+)+$'){
+        $status='Unverified';$message='Windows did not return a valid process SID.'
+    } elseif(($Snapshot.ShellSid -and $Snapshot.ShellSid -ne $sid) -or ($Snapshot.SessionSid -and $Snapshot.SessionSid -ne $sid)){
+        $status='DifferentAccount';$message='The installer account differs from the signed-in desktop. Sign in directly to the administrator account used in class, then rerun.'
+    } elseif($Snapshot.ShellSid -and $Snapshot.ShellSessionId -ne $Snapshot.SessionId){
+        $status='DifferentSession';$message='The shell belongs to a different Windows session.'
+    } elseif($Snapshot.InputDesktop -and $Snapshot.InputDesktop -ine 'Default'){
+        $status='DesktopLocked';$message='Unlock the classroom desktop and dismiss other UAC prompts, then rerun.'
+    } elseif($Snapshot.SessionState -ge 0 -and $Snapshot.SessionState -ne 0){
+        $status='SessionInactive';$message='The Windows session is disconnected or not active.'
+    } elseif(-not $Snapshot.InputDesktop){
+        $status='DesktopUnavailable';$message='The input desktop is not ready or could not be queried.'
+    } elseif($Snapshot.ShellSid -eq $sid){
+        $status='Ready';$method='NativeShellToken';$message='Verified current Windows SID against the desktop shell token.'
+    } elseif($Snapshot.SessionSid -eq $sid -and $Snapshot.SessionState -eq 0){
+        $status='Ready';$method='NativeWTSSession';$message='Verified current Windows SID against the active logon session.'
     }
-    return $false
+    [pscustomobject]@{Ready=($status -eq 'Ready');Status=$status;Method=$method;Message=$message;Snapshot=$Snapshot;At=(Get-Date -Format o)}
+}
+
+function Get-LabClassroomContext {
+    try {
+        if(-not ('SchoolLab.DesktopContext' -as [type])){Add-Type -Path (Join-Path $PSScriptRoot 'Session.Context.cs') -ErrorAction Stop}
+        Resolve-LabClassroomContext ([SchoolLab.DesktopContext]::Capture())
+    } catch {
+        [pscustomobject]@{Ready=$false;Status='ProbeFailed';Method='';Message=('Windows desktop probe failed: '+$_);Snapshot=$null;At=(Get-Date -Format o)}
+    }
+}
+
+function Wait-LabClassroomContext {
+    param([ValidateRange(0,120)][int]$TimeoutSeconds=15,
+        [scriptblock]$Probe={Get-LabClassroomContext},[scriptblock]$WaitAction={Start-Sleep -Seconds 1})
+    for($attempt=0;$attempt -le $TimeoutSeconds;$attempt++){
+        $context=& $Probe
+        if($context.Ready -or $context.Status -in @('ServiceSession','DifferentAccount','DifferentSession','DesktopLocked','SessionInactive')){return $context}
+        if($attempt -lt $TimeoutSeconds){& $WaitAction}
+    }
+    $context
+}
+
+function Test-LabClassroomContext {
+    (Get-LabClassroomContext).Ready
 }
 
 function Get-LabExecutableVersion {
@@ -306,7 +345,7 @@ function Test-LabPackage {
             throw "SHA256 mismatch: $($item.Path)"
         }
     }
-    foreach ($required in @('LabConfig.psd1','Lab.Core.psm1','Reboot.Core.psm1','Start-Lab.ps1','Check-LabReady.ps1','Invoke-AppDeployToolkit.ps1','Initialize-LabUser.ps1',
+    foreach ($required in @('LabConfig.psd1','Lab.Core.psm1','Session.Context.cs','Reboot.Core.psm1','Start-Lab.ps1','Check-LabReady.ps1','Invoke-AppDeployToolkit.ps1','Initialize-LabUser.ps1',
         'PSAppDeployToolkit\PSAppDeployToolkit.psd1', $Lock.Components.Jdk.File,
         $Lock.Components.Python.File, $Lock.Components.VSCode.File)) {
         if (@($Lock.Files | Where-Object Path -eq $required).Count -ne 1) { throw "Unlocked required file: $required" }

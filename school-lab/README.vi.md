@@ -1,4 +1,4 @@
-# SchoolLab 2.6.2 — bộ cài offline phòng tin học
+# SchoolLab 2.6.3 — bộ cài offline phòng tin học
 
 ## Chức năng chính
 
@@ -13,12 +13,13 @@
 
 | Nội dung | Vị trí |
 | --- | --- |
-| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.6.2-20261031` trong repo |
+| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.6.3-20261031` trong repo |
 | Installer và extension offline | `Files\` trong bộ cài |
 | SFIT được cài trên máy trạm | `%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB` |
 | Profile Olympic Đặc Biệt 2026 | Một thư mục riêng `SchoolLab-OLBDB-...` trong `%LOCALAPPDATA%\Google\Chrome\User Data`; dùng shortcut Desktop để mở |
 | Log phần mềm | `%ProgramData%\SchoolLab\Logs\<Tên máy>` |
 | Log SFIT và thông tin profile/shortcut | `%LOCALAPPDATA%\SchoolLab\Chrome` |
+| Kết quả xác minh tài khoản Desktop/SID khi cài SFIT | `%LOCALAPPDATA%\SchoolLab\Chrome\classroom-context.json` |
 | Trạng thái kiểm tra sau restart | `%ProgramFiles%\SchoolLab\Resume\*.json` |
 | Log kiểm tra sau restart | `%ProgramData%\SchoolLab\Logs\<Tên máy>\Bootstrap\after-restart-*.log` |
 
@@ -42,6 +43,8 @@ Giữ `enabled: true`, múi giờ `+07:00`, giờ 24 tiếng và kết thúc sau
 3. Để máy yên trong lúc script mở Olympic Đặc Biệt 2026, kiểm tra Profile Path và tự Load unpacked. Sau đó script mở **Chi tiết SFIT** để bỏ ghim, tự cuộn nếu cần và đọc lại trạng thái. Chỉ đạt khi có **SFIT DA XAC NHAN**, mã **0** ở bước cài SFIT.
 4. Nếu cần restart (mã **3010**), script cài xong mọi bước rồi đếm ngược **60 giây** và restart. Lưu công việc; **Ctrl+C** hủy đếm ngược. Đăng nhập lại **đúng tài khoản Windows đã cài**, script tự kiểm tra từ ổ máy, không cần USB/chạy lại bộ cài. Không cần restart thì kết thúc mã **0**.
 5. Ngày thi, mở shortcut **Olympic Đặc Biệt 2026** trên Desktop. Không cần USB hoặc nhập mã vào thi; kiểm tra đồng hồ máy trước buổi thi.
+
+Bản 2.6.3 xác minh SID trực tiếp bằng token Desktop và phiên đăng nhập Windows, không phụ thuộc WMI của Explorer. Trường hợp một tài khoản Admin dùng trực tiếp sẽ được đối chiếu đúng SID. Nếu không xác minh được, script chờ tối đa 15 giây và lưu `classroom-context.json`; không tự kết luận là có admin khác. Nếu UAC dùng tài khoản khác với Desktop thật, cần đăng nhập trực tiếp tài khoản admin dùng cho lớp rồi chạy lại.
 
 Không tự đăng nhập Windows hoặc tự restart thêm lần nữa sau kiểm tra. Ứng dụng có tài liệu chưa lưu có thể chặn restart. Nếu còn lỗi/còn yêu cầu restart, xem log và chạy `Check-LabReady.cmd` sau khi xử lý. Lỗi cài đặt thật sẽ dừng, không bị bỏ qua để restart. Chế độ không có Desktop/tài khoản lớp đang đăng nhập chỉ cài phần mềm và báo các bước còn thiếu, không tự restart.
 

@@ -182,7 +182,7 @@ Write-LabJson $jsonPath @{Status='Passed';Value=17}
 Assert-Equal (Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json).Value 17 'Atomic result write'
 
 $package = Join-Path $scratch 'package'
-$required = @('LabConfig.psd1','Lab.Core.psm1','Reboot.Core.psm1','Start-Lab.ps1','Check-LabReady.ps1','Invoke-AppDeployToolkit.ps1','Initialize-LabUser.ps1',
+$required = @('LabConfig.psd1','Lab.Core.psm1','Session.Context.cs','Reboot.Core.psm1','Start-Lab.ps1','Check-LabReady.ps1','Invoke-AppDeployToolkit.ps1','Initialize-LabUser.ps1',
     'PSAppDeployToolkit\PSAppDeployToolkit.psd1','Files\jdk.msi','Files\python.exe','Files\vscode.exe')
 $files = @()
 foreach ($relative in $required) {

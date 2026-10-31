@@ -67,9 +67,9 @@ try {
             exit 3010
         }
         if ($decision -ne 'Resume') { throw "Automatic resume stopped: $decision. See $ResumeStatePath" }
-        $waitUntil = [datetime]::UtcNow.AddSeconds(120)
-        while (-not (Test-LabClassroomContext) -and [datetime]::UtcNow -lt $waitUntil) { Start-Sleep -Seconds 2 }
-        if (-not (Test-LabClassroomContext)) { throw 'Interactive Explorer desktop is not ready for the signed-in classroom account.' }
+        $context = Wait-LabClassroomContext -TimeoutSeconds 120
+        Write-LabJson (Join-Path $bootstrapLog ('desktop-context-'+$resumeState.Id+'.json')) $context
+        if (-not $context.Ready) { throw $context.Message }
         # The entire installation already passed BEFORE requesting the restart.
         # After sign-in only verify readiness; never replay Chrome UI/installers
         # or request another restart from this branch.
@@ -102,7 +102,9 @@ try {
         if ($machineExit -eq 3010 -and $report.Status -eq 'DeferredReboot') { exit 3010 }
         throw "Machine phase did not pass: $($report.Status). No automatic restart was requested."
     }
-    if (Test-LabClassroomContext) {
+    $context = Wait-LabClassroomContext -TimeoutSeconds 15
+    Write-LabJson (Join-Path $report.LogDirectory 'classroom-context.json') $context
+    if ($context.Ready) {
         Write-Host "[4/$totalStages] Configuring offline C++, Java and Python extensions for this classroom account..."
         $support = Expand-LabPath $sourceConfig.SupportDirectory
         & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $support 'Initialize-LabUser.ps1')
@@ -155,6 +157,8 @@ try {
         if ($userExit -ne 0) { exit 69020 }
     } else {
         Write-Host 'APPLICATIONS INSTALLED. Classroom account setup is pending.' -ForegroundColor Yellow
+        Write-Host $context.Message -ForegroundColor Yellow
+        Write-Host "Desktop account diagnostic: $($report.LogDirectory)\classroom-context.json"
         Write-Host 'Sign into the account used in class, wait for automatic initialization, then run Check-LabReady.cmd.'
     }
     Write-Host "Machine log: $($report.LogDirectory)"
