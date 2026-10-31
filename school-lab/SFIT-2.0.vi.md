@@ -1,4 +1,4 @@
-# SFIT Tracker 2.0 — SchoolLab 2.6.1
+# SFIT Tracker 2.0 — SchoolLab 2.6.2
 
 SFIT tự kiểm soát tab/trang thi theo lịch, không có ô nhập code vào thi hoặc tạo phiên.
 

@@ -136,7 +136,7 @@ try {
     $deadline = [datetime]::UtcNow.AddSeconds(([math]::Min(600,$config.ChromeAutomationTimeoutSeconds+10*$pinCount)))
     $step = 'Navigate'; $loaded = $false; $ready = $null
     $lastObservation = ''; $lastProgress = [datetime]::MinValue; $loadedAt = [datetime]::MaxValue
-    $unpinId = ''; $unpinUntil = [datetime]::MinValue
+    $unpinId = ''; $unpinUntil = [datetime]::MinValue; $lastPinObservation = ''
     while ([datetime]::UtcNow -lt $deadline) {
         $heartbeat = Join-Path $logRoot 'heartbeat.json'
         if ($loaded -and (Test-Path -LiteralPath $heartbeat)) {
@@ -182,8 +182,10 @@ try {
                 if ([datetime]::UtcNow -ge $unpinUntil) { throw "Cannot verify/unpin extension $id in the selected profile within 25 seconds." }
                 $null = [SfitUi]::EnsureSetupAddress($window,('chrome://extensions/?id='+$id))
                 $pinState = [SfitUi]::UnpinExtension($window,$id)
+                $observation = "$id $pinState"
+                if ($observation -ne $lastPinObservation) { Write-SfitTrace "Pin verification: $observation"; $lastPinObservation=$observation }
                 if ($pinState -eq 'Changed') { $unpinChanged++; Write-SfitTrace "Unpinned extension=$id" }
-                if ($pinState -in @('Unpinned','NotPinnable')) { $null = $pins.Dequeue(); $step = if ($pins.Count) {'Unpin'} else {'Navigate'} }
+                if ($pinState -eq 'Unpinned') { $null = $pins.Dequeue(); $step = if ($pins.Count) {'Unpin'} else {'Navigate'} }
             } elseif ($step -eq 'Folder' -and [SfitUi]::SelectFolder($window,$destination)) {
                 $step = 'Verify'; $loadedAt = [datetime]::UtcNow; $loaded = $true; Write-SfitTrace 'Selected the local extension folder; waiting for a fresh native report.'
             }
@@ -198,15 +200,16 @@ try {
     }
     # Verify the target profile really contains SFIT, and leave SFIT unpinned.
     # This also prevents a heartbeat from another profile alone from succeeding.
-    $step = 'UnpinSFIT'; $pinUntil = [datetime]::UtcNow.AddSeconds(30); $sfitUnpinned = $false
+    $step = 'UnpinSFIT'; $pinUntil = [datetime]::UtcNow.AddSeconds(45); $sfitUnpinned = $false; $lastPinObservation = ''; $state = 'NotObserved'
     while (-not $sfitUnpinned -and [datetime]::UtcNow -lt $pinUntil) {
         $window = [SfitUi]::SelectedWindow($windowHandle,$sessionId)
         $null = [SfitUi]::EnsureSetupAddress($window,('chrome://extensions/?id='+$extension.id))
         $state = [SfitUi]::UnpinExtension($window,$extension.id)
+        if ($state -ne $lastPinObservation) { Write-SfitTrace "SFIT pin verification: $state"; $lastPinObservation=$state }
         if ($state -eq 'Changed') { $unpinChanged++ }
         if ($state -eq 'Unpinned') { $sfitUnpinned = $true } else { Start-Sleep -Milliseconds 400 }
     }
-    if (-not $sfitUnpinned) { throw 'SFIT detail/pin state was not verified in the selected profile.' }
+    if (-not $sfitUnpinned) { throw "SFIT was loaded and sent its native report, but toolbar unpin verification failed: $state. See $logRoot\install.log and uia-diagnostic.txt." }
     Write-LabJson (Join-Path $logRoot 'profile-state.json') @{Schema=4;Status='Ready';UserSid=$sid;UserDataDirectory=$selection.UserDataDirectory;
         ProfileDirectory=$profileDirectory;ProfilePath=$selection.ProfilePath;ProfileName=$selection.ProfileName;Shortcut=$shortcut;ProfileLayout='DedicatedOLBDB';Unpinned=$true;At=(Get-Date -Format o)}
     Write-LabJson (Join-Path $logRoot 'result.json') @{Status='Passed';PackageId=$lock.PackageId;ExtensionId=$extension.id;Version=$extension.version;ConfigSha256=$extension.configSha256;

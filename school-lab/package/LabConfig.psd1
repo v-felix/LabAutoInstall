@@ -1,6 +1,6 @@
 ﻿@{
     # Edit before building; the builder hashes this file into the package lock.
-    PackageRevision = '2.6.1'
+    PackageRevision = '2.6.2'
     EnableChromeExtension = $true
     ChromeExtensionDirectory = '%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB'
     ChromeExecutable = '' # Empty: discover Chrome Stable in standard locations.

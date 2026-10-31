@@ -128,6 +128,55 @@ Assert (-not [SfitChromePage]::IsPinLabel('Remove extension')) 'Remove mistaken 
 Assert ([SfitChromePage]::IsProfileNameLabel('Profile name')) 'Profile name label not recognized'
 Assert (-not [SfitChromePage]::IsProfileNameLabel('Search settings')) 'Search box mistaken for profile name'
 
+# Regression: Chrome detail pages are titled "Extensions - SFIT Tracker",
+# which the former exact "Extensions" filter silently skipped until timeout.
+$id='gojbmoppgoeccpfgiigckholndeagdcm'
+foreach($title in @('Extensions','Extensions - SFIT Tracker','Extensions - Other Extension',($viTab+' - SFIT Tracker'),('Extensions '+[char]0x2013+' SFIT Tracker'),('Extensions '+[char]0x2014+' SFIT Tracker'),'Tien ich mo rong - SFIT Tracker')){
+    Assert ([SfitChromePage]::IsExtensionsDetailDocument($title)) "Valid detail document rejected: $title"
+}
+foreach($title in @('SFIT Tracker','Adblock Plus has been installed!','Extensions-internals','Extensions - ','Learn about Extensions')){
+    Assert (-not [SfitChromePage]::IsExtensionsDetailDocument($title)) "Unrelated detail document accepted: $title"
+}
+Assert ([SfitChromePage]::IsExtensionDetailAddress(('chrome://extensions/?id='+$id),$id)) 'Exact detail address rejected'
+foreach($url in @(('https://extensions/?id='+$id),('chrome://extensions/?id='+$id+'&other=1'),('chrome://extensions/?id='+$id+'#fake'),'chrome://extensions/','chrome://extensions/?id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')){
+    Assert (-not [SfitChromePage]::IsExtensionDetailAddress($url,$id)) "Unrelated detail URL accepted: $url"
+}
+Assert ([SfitChromePage]::HasExtensionId(('ID: '+$id),$id)) 'Grouped ID label rejected'
+Assert ([SfitChromePage]::HasExtensionId($id,$id)) 'Exact extension ID rejected'
+Assert (-not [SfitChromePage]::HasExtensionId(($id+'a'),$id)) 'Longer extension ID accepted'
+Assert (-not [SfitChromePage]::HasExtensionId('Other extension','invalid')) 'Invalid requested ID accepted'
+Assert (-not [SfitChromePage]::IsExtensionsTab('Extensions - SFIT Tracker')) 'List-page selector must remain separate from detail titles'
+$pin=[SfitFakePinView]::new()
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'Unpinned' -and $pin.Toggles -eq 0) 'Already off must not toggle back on'
+$pin.CurrentState=[SfitPinState]::On
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'Changed' -and $pin.Toggles -eq 1) 'Pinned switch must toggle once'
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'Unpinned' -and $pin.Toggles -eq 1) 'Changed state must be re-read as Off'
+$pin=[SfitFakePinView]::new();$pin.CurrentState=[SfitPinState]::On;$pin.ToggleTakesEffect=$false
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'Changed') 'Attempted toggle not recorded'
+Assert ([SfitChromePinning]::Unpin($pin) -ne 'Unpinned') 'Toggle without state change falsely passed'
+$pin=[SfitFakePinView]::new();$pin.Matches=$false;$pin.CurrentState=[SfitPinState]::On
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'LoadingDetail' -and $pin.Toggles -eq 0 -and $pin.Scrolls -eq 0) 'Wrong page received pin actions'
+$pin.CurrentState=[SfitPinState]::Off
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'LoadingDetail') 'Wrong page with an Off switch falsely passed'
+$pin=[SfitFakePinView]::new();$pin.CurrentState=[SfitPinState]::On;$pin.IsEnabled=$false
+Throws { [SfitChromePinning]::Unpin($pin) }
+Assert ($pin.Toggles -eq 0) 'Policy-disabled switch was toggled'
+$pin=[SfitFakePinView]::new();$pin.CurrentState=[SfitPinState]::On;$pin.Visible=$false
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'ScrollingToPin' -and $pin.Reveals -eq 1 -and $pin.Toggles -eq 0) 'Offscreen switch must be revealed before toggling'
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'Changed' -and $pin.Toggles -eq 1) 'Revealed switch not toggled'
+$pin=[SfitFakePinView]::new();$pin.CurrentState=[SfitPinState]::On;$pin.Visible=$false;$pin.CanReveal=$false;$pin.ScrollsRemaining=1
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'ScrollingToPin' -and $pin.Scrolls -eq 1 -and $pin.Toggles -eq 0) 'Missing ScrollItemPattern must try bounded page scroll'
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'PinControlOffscreen' -and $pin.Toggles -eq 0) 'Unreachable switch falsely passed'
+$pin=[SfitFakePinView]::new();$pin.CurrentState=[SfitPinState]::Missing;$pin.ScrollsRemaining=1
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'ScrollingForPin') 'Missing pin field must scroll to search'
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'PinControlMissing' -and $pin.Toggles -eq 0) 'Missing pin field falsely passed as unpinned'
+$pin=[SfitFakePinView]::new();$pin.CurrentState=[SfitPinState]::Unsupported
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'PinControlUnsupported' -and $pin.Toggles -eq 0) 'Unsupported provider falsely passed'
+$pin.ScrollsRemaining=1
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'ScrollingForPin' -and $pin.Toggles -eq 0) 'Partial row must scroll and re-read its nested control'
+$pin=[SfitFakePinView]::new();$pin.CurrentState=[SfitPinState]::Indeterminate
+Assert ([SfitChromePinning]::Unpin($pin) -eq 'PinStateIndeterminate' -and $pin.Toggles -eq 0) 'Indeterminate switch must not receive input'
+
 # A small locked fixture exercises the schedule updater with real child PS5.1.
 $package = Join-Path $scratch 'package'; $files = Join-Path $package 'Files\ChromeExtension'
 New-Item -ItemType Directory -Path $files -Force | Out-Null

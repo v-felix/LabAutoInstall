@@ -49,6 +49,20 @@ public static class SfitChromePage {
         string n = Normalize(name);
         return n == "extensions" || n == "tien ich" || n == "tien ich mo rong";
     }
+    public static bool IsExtensionsDetailDocument(string name) {
+        string n = Normalize(name);
+        return IsExtensionsTab(n) || Regex.IsMatch(n,@"^(extensions|tien ich|tien ich mo rong)\s+[-\u2013\u2014]\s+\S");
+    }
+    public static bool IsExtensionDetailAddress(string address,string id) {
+        Uri uri;
+        return Regex.IsMatch(id ?? "",@"^[a-p]{32}$") && Uri.TryCreate(address,UriKind.Absolute,out uri) &&
+            uri.Scheme == "chrome" && uri.Host == "extensions" && uri.AbsolutePath == "/" &&
+            uri.UserInfo == "" && uri.Fragment == "" && uri.Query == "?id="+id;
+    }
+    public static bool HasExtensionId(string text,string id) {
+        return Regex.IsMatch(id ?? "",@"^[a-p]{32}$") &&
+            Regex.IsMatch(text ?? "",@"(?<![a-zA-Z0-9])"+Regex.Escape(id)+@"(?![a-zA-Z0-9])");
+    }
     public static bool IsDeveloperLabel(string name) {
         string n = Normalize(name);
         return n == "developer mode" || n == "che do danh cho nha phat trien" ||
@@ -81,6 +95,37 @@ public interface ISfitOmnibox {
     void Focus();
     void SetValue(string value);
     void PressEnter();
+}
+
+public enum SfitPinState { Missing, Unsupported, Off, On, Indeterminate }
+public interface ISfitPinView {
+    bool DetailMatches { get; }
+    SfitPinState State { get; }
+    bool Enabled { get; }
+    bool InView { get; }
+    bool Reveal();
+    bool ScrollFurther();
+    void ToggleOff();
+}
+
+// Shared production decision path, testable without touching a real browser.
+// Success requires a real Off state; a missing field never proves unpinned.
+public static class SfitChromePinning {
+    public static string Unpin(ISfitPinView view) {
+        if (!view.DetailMatches) return "LoadingDetail";
+        switch (view.State) {
+            case SfitPinState.Off: return "Unpinned";
+            case SfitPinState.On:
+                if (!view.Enabled) throw new InvalidOperationException("Pin control is disabled by Chrome/policy");
+                if (!view.InView) return view.Reveal() || view.ScrollFurther() ? "ScrollingToPin" : "PinControlOffscreen";
+                view.ToggleOff(); return "Changed"; // re-read Off on next call
+            case SfitPinState.Missing:
+                return view.ScrollFurther() ? "ScrollingForPin" : "PinControlMissing";
+            case SfitPinState.Unsupported:
+                return view.ScrollFurther() ? "ScrollingForPin" : "PinControlUnsupported";
+            default: return "PinStateIndeterminate";
+        }
+    }
 }
 
 // Exact production navigation sequence, independently testable without sending
@@ -116,6 +161,7 @@ public static class SfitUi {
     static readonly Dictionary<int,DateTime> lastNavigation = new Dictionary<int,DateTime>();
     static readonly Dictionary<int,int> navigationCount = new Dictionary<int,int>();
     static readonly Dictionary<int,string> navigationTarget = new Dictionary<int,string>();
+    static readonly Dictionary<string,int> pinScrollCount = new Dictionary<string,int>();
     static SfitUi() {
         // Keep the apartment alive: UIA elements must not outlive the apartment
         // that created their provider proxies.
@@ -251,41 +297,83 @@ public static class SfitUi {
     }); }
     public static string UnpinExtension(AutomationElement w,string id) { return Bounded(delegate {
         if (!Regex.IsMatch(id,@"^[a-p]{32}$")) throw new ArgumentException("Invalid extension ID");
-        string target = "chrome://extensions/?id="+id;
-        if (!String.Equals(Address(w),target,StringComparison.OrdinalIgnoreCase)) return "Loading";
-        var docs = w.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Document));
-        foreach (AutomationElement doc in docs) {
-            if (doc.Current.IsOffscreen || !SfitChromePage.IsExtensionsTab(doc.Current.Name)) continue;
-            var items = doc.FindAll(TreeScope.Descendants,Condition.TrueCondition);
-            bool correctId = false, detailSize = false, detailSource = false;
-            foreach (AutomationElement item in items) {
-                string name = (item.Current.Name ?? "").Trim();
-                if (name == id) correctId = true;
-                string label = SfitChromePage.Normalize(name);
-                if (label == "size" || label == "kich thuoc") detailSize = true;
-                if (label == "source" || label == "nguon") detailSource = true;
-            }
-            if (!correctId) continue; // typed address alone is not a loaded detail page
-            bool hasPinLabel = false;
-            foreach (AutomationElement item in items) {
-                if (item.Current.AutomationId != "pin-to-toolbar" && !SfitChromePage.IsPinLabel(item.Current.Name)) continue;
-                hasPinLabel = true;
-                object p;
-                if (!item.TryGetCurrentPattern(TogglePattern.Pattern,out p)) continue;
-                var toggle = (TogglePattern)p;
-                if (toggle.Current.ToggleState == ToggleState.Off) return "Unpinned";
-                if (!item.Current.IsEnabled) throw new Exception("An extension is force-pinned by external policy: "+id);
-                // Scroll only this known toggle into view; never click coordinates.
-                object scroll; if (item.TryGetCurrentPattern(ScrollItemPattern.Pattern,out scroll)) ((ScrollItemPattern)scroll).ScrollIntoView();
-                toggle.Toggle(); return "Changed";
-            }
-            if (hasPinLabel) throw new Exception("Chrome exposes the pin control without TogglePattern; cannot verify unpin: "+id);
-            // A loaded detail page with the exact ID but no pin field is an
-            // extension without a toolbar action (pinnedToToolbar undefined).
-            if (detailSize && detailSource) return "NotPinnable";
-        }
-        return "Loading";
+        return SfitChromePinning.Unpin(new NativePinView(w,id));
     }); }
+    static AutomationElement DetailDocument(AutomationElement window,string id) {
+        if (!SfitChromePage.IsExtensionDetailAddress(Address(window),id)) return null;
+        foreach (AutomationElement doc in window.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Document))) {
+            if (doc.Current.IsOffscreen || !SfitChromePage.IsExtensionsDetailDocument(doc.Current.Name)) continue;
+            foreach (AutomationElement item in doc.FindAll(TreeScope.Descendants,Condition.TrueCondition))
+                if (SfitChromePage.HasExtensionId(item.Current.Name,id)) return doc;
+        }
+        return null;
+    }
+    // A toggle-row wrapper or its label may precede the actual shadow-DOM
+    // switch in the accessibility tree. Only search within that known row.
+    static AutomationElement PinToggle(AutomationElement document,out bool foundLabel) {
+        foundLabel = false;
+        foreach (AutomationElement item in document.FindAll(TreeScope.Descendants,Condition.TrueCondition)) {
+            if (item.Current.AutomationId != "pin-to-toolbar" && !SfitChromePage.IsPinLabel(item.Current.Name)) continue;
+            foundLabel = true; object pattern;
+            if (item.TryGetCurrentPattern(TogglePattern.Pattern,out pattern)) return item;
+            AutomationElement candidate = null; int count = 0;
+            foreach (AutomationElement child in item.FindAll(TreeScope.Descendants,Condition.TrueCondition)) {
+                if (child.TryGetCurrentPattern(TogglePattern.Pattern,out pattern)) { candidate=child; count++; }
+            }
+            if (count == 1) return candidate;
+        }
+        return null;
+    }
+    sealed class NativePinView : ISfitPinView {
+        readonly AutomationElement window,document,control;
+        readonly string id;
+        readonly bool hasPinLabel;
+        public NativePinView(AutomationElement w,string extensionId) {
+            window=w; id=extensionId; document=DetailDocument(w,id);
+            if (document != null) { bool found; control=PinToggle(document,out found); hasPinLabel=found; }
+        }
+        public bool DetailMatches { get { return document != null; } }
+        public SfitPinState State { get {
+            if (control == null) return hasPinLabel ? SfitPinState.Unsupported : SfitPinState.Missing;
+            object p;
+            if (!control.TryGetCurrentPattern(TogglePattern.Pattern,out p)) return SfitPinState.Unsupported;
+            var state=((TogglePattern)p).Current.ToggleState;
+            return state == ToggleState.Off ? SfitPinState.Off : state == ToggleState.On ? SfitPinState.On : SfitPinState.Indeterminate;
+        } }
+        public bool Enabled { get { return control != null && control.Current.IsEnabled; } }
+        public bool InView { get { return control != null && !control.Current.IsOffscreen; } }
+        void Recheck() { if (DetailDocument(window,id) == null) throw new InvalidOperationException("Chrome detail page changed before pin action"); }
+        public bool Reveal() {
+            Recheck(); object p;
+            if (control == null || !control.TryGetCurrentPattern(ScrollItemPattern.Pattern,out p)) return false;
+            ((ScrollItemPattern)p).ScrollIntoView(); return true;
+        }
+        public bool ScrollFurther() {
+            Recheck();
+            string key=window.Current.NativeWindowHandle+":"+id; int count;
+            pinScrollCount.TryGetValue(key,out count); if (count >= 8) return false;
+            AutomationElement best=null; ScrollPattern scroll=null; double area=0;
+            var candidates=new List<AutomationElement>(); candidates.Add(document);
+            foreach (AutomationElement e in document.FindAll(TreeScope.Descendants,Condition.TrueCondition)) candidates.Add(e);
+            foreach (AutomationElement e in candidates) {
+                object p; if (e.Current.IsOffscreen || !e.TryGetCurrentPattern(ScrollPattern.Pattern,out p)) continue;
+                var candidate=(ScrollPattern)p;
+                if (!candidate.Current.VerticallyScrollable || candidate.Current.VerticalScrollPercent >= 100) continue;
+                var r=e.Current.BoundingRectangle; double size=r.Width*r.Height;
+                if (size > area) { area=size; best=e; scroll=candidate; }
+            }
+            if (best == null) return false;
+            scroll.Scroll(ScrollAmount.NoAmount,ScrollAmount.LargeIncrement); pinScrollCount[key]=count+1; return true;
+        }
+        public void ToggleOff() {
+            Recheck(); object p;
+            if (!control.Current.IsEnabled || control.Current.IsOffscreen || !control.TryGetCurrentPattern(TogglePattern.Pattern,out p))
+                throw new InvalidOperationException("Pin control is no longer available for a safe toggle");
+            var toggle=(TogglePattern)p;
+            if (toggle.Current.ToggleState == ToggleState.On) toggle.Toggle();
+            else if (toggle.Current.ToggleState != ToggleState.Off) throw new InvalidOperationException("Pin state became indeterminate");
+        }
+    }
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
@@ -515,14 +603,19 @@ public static class SfitUi {
     static string RawDescribe(AutomationElement window) {
         var result = new List<string>();
         result.Add("Window: " + window.Current.Name + " | class=" + window.Current.ClassName + " | PID=" + window.Current.ProcessId);
+        result.Add("Setup address: " + Address(window));
         result.Add("Page classification: " + (ActualExtensionsPage(window) ? "Verified extensions document" : "Other document / not loaded yet"));
         result.Add("Omnibox points to extensions: " + SfitChromePage.IsExtensionsAddress(Address(window)) + "; extensions document loaded: " + HasExtensionsDocument(window));
         var items = window.FindAll(TreeScope.Descendants,Condition.TrueCondition);
         // Tab names and setup controls first, so toolbar-heavy profiles do
         // not use up the log limit before the relevant diagnostics appear.
         foreach (AutomationElement e in items) {
-            if (e.Current.ControlType == ControlType.TabItem || SfitChromePage.IsDeveloperLabel(e.Current.Name) || SfitChromePage.IsLoadLabel(e.Current.Name))
-                result.Add("TARGET " + e.Current.ControlType.ProgrammaticName + ": " + e.Current.Name + " | id=" + e.Current.AutomationId + " | enabled=" + e.Current.IsEnabled + " | offscreen=" + e.Current.IsOffscreen);
+            if (e.Current.ControlType == ControlType.TabItem || e.Current.ControlType == ControlType.Document ||
+                SfitChromePage.IsDeveloperLabel(e.Current.Name) || SfitChromePage.IsLoadLabel(e.Current.Name) ||
+                SfitChromePage.IsPinLabel(e.Current.Name) || e.Current.AutomationId == "pin-to-toolbar") {
+                object p; string toggle=e.TryGetCurrentPattern(TogglePattern.Pattern,out p) ? ((TogglePattern)p).Current.ToggleState.ToString() : "NoTogglePattern";
+                result.Add("TARGET " + e.Current.ControlType.ProgrammaticName + ": " + e.Current.Name + " | id=" + e.Current.AutomationId + " | enabled=" + e.Current.IsEnabled + " | offscreen=" + e.Current.IsOffscreen + " | toggle="+toggle);
+            }
         }
         foreach (AutomationElement e in items) {
             if (result.Count >= 300) break;

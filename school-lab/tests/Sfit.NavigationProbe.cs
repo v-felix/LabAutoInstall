@@ -33,3 +33,20 @@ public sealed class SfitFakeOmnibox : ISfitOmnibox {
         return Marshal.SizeOf(type);
     }
 }
+
+public sealed class SfitFakePinView : ISfitPinView {
+    public bool Matches=true, IsEnabled=true, Visible=true, CanReveal=true;
+    public bool ToggleTakesEffect=true;
+    public SfitPinState CurrentState=SfitPinState.Off;
+    public int ScrollsRemaining, Toggles, Reveals, Scrolls;
+    public bool DetailMatches { get { return Matches; } }
+    public SfitPinState State { get { return CurrentState; } }
+    public bool Enabled { get { return IsEnabled; } }
+    public bool InView { get { return Visible; } }
+    public bool Reveal() { Reveals++; if (CanReveal) Visible=true; return CanReveal; }
+    public bool ScrollFurther() { Scrolls++; if (ScrollsRemaining<=0) return false; ScrollsRemaining--; return true; }
+    public void ToggleOff() {
+        if (!Matches || !IsEnabled || !Visible || CurrentState != SfitPinState.On) throw new InvalidOperationException("Unsafe pin toggle");
+        Toggles++; if (ToggleTakesEffect) CurrentState=SfitPinState.Off;
+    }
+}

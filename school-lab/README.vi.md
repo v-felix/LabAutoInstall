@@ -1,4 +1,4 @@
-# SchoolLab 2.6.1 — bộ cài offline phòng tin học
+# SchoolLab 2.6.2 — bộ cài offline phòng tin học
 
 ## Chức năng chính
 
@@ -13,7 +13,7 @@
 
 | Nội dung | Vị trí |
 | --- | --- |
-| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.6.1-20261031` trong repo |
+| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.6.2-20261031` trong repo |
 | Installer và extension offline | `Files\` trong bộ cài |
 | SFIT được cài trên máy trạm | `%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB` |
 | Profile Olympic Đặc Biệt 2026 | Một thư mục riêng `SchoolLab-OLBDB-...` trong `%LOCALAPPDATA%\Google\Chrome\User Data`; dùng shortcut Desktop để mở |
@@ -39,7 +39,7 @@ Giữ `enabled: true`, múi giờ `+07:00`, giờ 24 tiếng và kết thúc sau
 
 1. Đăng nhập tài khoản Windows dùng cho lớp; Chrome Stable 120+ cần có sẵn. Đóng VS Code nếu cài toàn bộ; không cần đóng/xóa các profile Chrome cũ.
 2. Chuột phải `Install-Lab.cmd` → **Run as administrator**, hoặc `Install-ChromeExtension.cmd` nếu chỉ chuẩn bị/cập nhật SFIT.
-3. Để máy yên trong lúc script mở Olympic Đặc Biệt 2026, kiểm tra Profile Path và tự Load unpacked. Có **SFIT DA XAC NHAN** là bước SFIT đã đạt.
+3. Để máy yên trong lúc script mở Olympic Đặc Biệt 2026, kiểm tra Profile Path và tự Load unpacked. Sau đó script mở **Chi tiết SFIT** để bỏ ghim, tự cuộn nếu cần và đọc lại trạng thái. Chỉ đạt khi có **SFIT DA XAC NHAN**, mã **0** ở bước cài SFIT.
 4. Nếu cần restart (mã **3010**), script cài xong mọi bước rồi đếm ngược **60 giây** và restart. Lưu công việc; **Ctrl+C** hủy đếm ngược. Đăng nhập lại **đúng tài khoản Windows đã cài**, script tự kiểm tra từ ổ máy, không cần USB/chạy lại bộ cài. Không cần restart thì kết thúc mã **0**.
 5. Ngày thi, mở shortcut **Olympic Đặc Biệt 2026** trên Desktop. Không cần USB hoặc nhập mã vào thi; kiểm tra đồng hồ máy trước buổi thi.
 
