@@ -206,3 +206,11 @@ Nguồn: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/extens
 - Windows PowerShell 5.1 đạt **122** kiểm tra SFIT integration; **102** logic/parse, **116** profile/shortcut và **97** restart đều đạt. Các boundary test không thao tác Chrome thật. Giữ profile mới mỗi lượt cài, tên Olympic Đặc Biệt 2026, UTCOJ, lịch 01/11/2026 13:00–17:00 +07:00 và restart chỉ ở cuối.
 - Đã đối chiếu cấu trúc pin-to-toolbar và switch lồng trong mã nguồn Chromium: https://github.com/chromium/chromium/blob/main/chrome/browser/resources/extensions/detail_view.html.ts và https://github.com/chromium/chromium/blob/main/chrome/browser/resources/extensions/toggle_row.html.ts . Chỉ quan sát máy ảo bằng computer-use; chưa chạy installer/UI bỏ ghim thật trong lượt này vì máy ảo đang có thao tác gỡ phần mềm. Cần pilot lại Install-ChromeExtension.cmd trên Windows 10/11 trước khi triển khai rộng.
 - Đã build `dist/SchoolLab-2.6.2-20261031`, PackageId `20261031-aace1434`, 262 file có hash, khoảng 766 MiB. ValidateOnly đạt, lock không thay đổi; script/README trong gói khớp hash với nguồn. 19 bài runtime SFIT cũng đạt; không đổi mã runtime hoặc lịch thi.
+
+## Bản chuẩn và dọn workspace (2026-10-31)
+
+- Người dùng đã xác nhận bản 2.6.2 chạy ổn trên máy thử Windows 10; chưa có kết quả kiểm thử trực tiếp Windows 11.
+- Bản chuẩn: D:\UTC\AutoInstallToolkit\LabAutoInstall; giữ gói SchoolLab-2.6.2-20261031, PackageId 20261031-aace1434. Không thay đổi file hoặc lock của gói đã phát hành.
+- Rà soát cho thấy khoảng 4.6 GiB, chủ yếu là 6 gói build. Có thể dọn 5 gói 2.4.0–2.6.1 và school-lab/test-results để thu hồi khoảng 3.8 GiB; giữ mã nguồn, regression tests, các file build và metadata nguồn.
+- Lệnh xóa tự động bị công cụ từ chối với lý do blocked by policy; chưa có tệp nào bị xóa bởi lượt dọn tự động này. Đã chuẩn bị Clean-Workspace.cmd/.ps1 để chủ máy chạy thủ công, xác minh hash bản hiện hành và mọi đường dẫn trước khi xóa; không nhận đường dẫn tùy ý và từ chối reparse point.
+- Chế độ preview không có -Apply đã chạy thành công bằng Windows PowerShell 5.1: đúng 5 build cũ và test-results, giữ 2.6.2, dự kiến thu hồi 3853.3 MiB. Script parse đạt, hash 262 file của bản chuẩn vẫn đạt; không thực thi chế độ xóa.

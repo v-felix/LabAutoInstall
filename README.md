@@ -4,6 +4,12 @@
 
 Bộ cài offline cho phòng thực hành Windows 10/11 x64, chạy bằng Administrator từ USB hoặc LAN.
 
+Thư mục chuẩn trên máy chuẩn bị: **`D:\UTC\AutoInstallToolkit\LabAutoInstall`**. Bản dùng để triển khai là **`school-lab\dist\SchoolLab-2.6.2-20261031`** (khoảng **766 MiB**); chép nguyên thư mục này sang USB. Hai file `.cmd` ngoài cùng gọi đúng bản đó.
+
+Dọn các bản build cũ và dữ liệu/log thử nghiệm: chạy **[school-lab/Clean-Workspace.cmd](school-lab/Clean-Workspace.cmd)** một lần. File này giữ bản 2.6.2, mã nguồn và bài kiểm tra tự động; kiểm tra hash bản hiện hành trước/sau khi xóa. Sau khi dọn, toàn thư mục còn khoảng **767 MiB**. Các bài kiểm tra nguồn không cần chép sang máy trạm.
+
+Bản 2.6.2 đã được người dùng xác nhận chạy ổn trên Windows 10. Windows 11 x64 nằm trong phạm vi hỗ trợ nhưng vẫn cần kiểm thử một máy trước khi triển khai rộng.
+
 ## Chức năng chính
 
 - Cài Dev-C++, Java JDK, Python/pip và VS Code Stable; cấu hình PATH, JAVA_HOME, extension và workspace C++/Java/Python.
