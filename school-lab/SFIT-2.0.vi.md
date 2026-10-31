@@ -1,10 +1,10 @@
-# SFIT Tracker 2.0 — SchoolLab 2.6.0
+# SFIT Tracker 2.0 — SchoolLab 2.6.1
 
 SFIT tự kiểm soát tab/trang thi theo lịch, không có ô nhập code vào thi hoặc tạo phiên.
 
 - Trang thi: **https://utcoj.info/**; allowedHosts chỉ có **utcoj.info**.
 - Lịch đã đặt: **01/11/2026, 13:00–17:00, giờ Việt Nam (+07:00)**.
-- SchoolLab giữ nguyên profile cũ, tạo/reuse profile riêng **Olympic Đặc Biệt 2026**, cài SFIT trên đó và tạo shortcut **Olympic Đặc Biệt 2026** trên Desktop.
+- SchoolLab giữ nguyên profile cũ, **mỗi lần cài SFIT tạo profile mới** tên **Olympic Đặc Biệt 2026**, cài SFIT trên đó và cập nhật shortcut **Olympic Đặc Biệt 2026** trên Desktop sang profile mới nhất. Quản trị viên tự xóa profile cũ khi cần.
 - Chạy Install-ChromeExtension.cmd bằng Administrator, để máy yên lúc tự cài. Chỉ đạt khi SFIT DA XAC NHAN, mã 0. Ngày thi mở shortcut Olympic Đặc Biệt 2026, không cần cắm USB.
 
 ## Chỉnh lịch

@@ -102,52 +102,41 @@ function Initialize-SfitExamProfile {
     if ($journal -ieq $data -or $journal.StartsWith($data+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Exam profile journal must be outside Chrome data.' }
     Assert-SfitPlainPath $journal
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    $reused = $false
-    if (Test-Path -LiteralPath $journal) {
-        $state = Get-Content -LiteralPath $journal -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($state.Schema -ne 1 -or $state.UserSid -ne $sid -or $state.UserDataDirectory -ine $data -or
-            $state.ProfileDirectory -notmatch ('^SchoolLab-'+[regex]::Escape($ProfileKey)+'-[0-9a-f]{12}$') -or
-            $state.ProfileToken -notmatch '^[0-9a-f]{32}$' -or $state.Status -notin @('Creating','Prepared')) { throw 'Exam profile journal belongs to another path/account or is invalid.' }
-        $reused = $true
-    } else {
+    # Every installer invocation gets a new profile. Old journals/markers may
+    # be stale after administrators manually remove profiles; do not read or
+    # repair them, and never adopt an existing directory by its display name.
+    do {
         $directory = 'SchoolLab-'+$ProfileKey+'-'+[guid]::NewGuid().ToString('N').Substring(0,12)
-        if (Test-Path -LiteralPath (Join-Path $data $directory)) { throw 'New exam directory already exists; nothing was overwritten.' }
-        $state = [pscustomobject]@{Schema=1;Status='Creating';UserSid=$sid;UserDataDirectory=$data;ProfileName=$ProfileName;
-            ProfileDirectory=$directory;ProfileToken=[guid]::NewGuid().ToString('N');At=(Get-Date -Format o)}
-        Write-SfitProfileJson $journal $state
-    }
+    } while (Test-Path -LiteralPath (Join-Path $data $directory))
+    $state = [pscustomobject]@{Schema=1;Status='Creating';UserSid=$sid;UserDataDirectory=$data;ProfileName=$ProfileName;
+        ProfileDirectory=$directory;ProfileToken=[guid]::NewGuid().ToString('N');At=(Get-Date -Format o)}
     $selection = Get-SfitChromeProfileSelection $LocalAppDataDirectory (Join-Path $data $state.ProfileDirectory)
     $marker = Join-Path $selection.ProfilePath 'SchoolLab.Profile.json'
     Assert-SfitPlainPath $marker
-    if (Test-Path -LiteralPath $selection.ProfilePath) {
-        if (Test-Path -LiteralPath $marker) {
-            $owner = Get-Content -LiteralPath $marker -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($owner.Schema -ne 1 -or $owner.UserSid -ne $sid -or $owner.ProfileToken -cne $state.ProfileToken) { throw 'Existing exam profile ownership does not match; nothing was changed.' }
-        } elseif ($state.Status -ne 'Creating' -or @(Get-ChildItem -LiteralPath $selection.ProfilePath -Force).Count) {
-            throw 'Refuse to adopt or overwrite an existing Chrome profile without our ownership marker.'
-        }
-    } elseif ($state.Status -eq 'Prepared') { throw 'The recorded OLBDB profile was removed. No old profile was adopted or deleted.' }
-    New-Item -ItemType Directory -Path $selection.ProfilePath -Force | Out-Null
-    if (-not (Test-Path -LiteralPath $marker)) {
-        Write-SfitProfileJson $marker @{Schema=1;UserSid=$sid;ProfileName=$ProfileName;ProfileToken=$state.ProfileToken}
-    }
-    if ($state.Status -eq 'Creating') {
-        $preferences = Join-Path $selection.ProfilePath 'Preferences'
-        Assert-SfitPlainPath $preferences
-        if (-not (Test-Path -LiteralPath $preferences)) {
-            # Seed ONLY the newly reserved directory, before Chrome opens it.
-            # Chrome owns Local State registration and all subsequent updates.
-            $value = @{profile=@{name=$ProfileName;using_default_name=$false};extensions=@{pinned_extensions=@()}}
-            $seed = $preferences+'.schoollab-'+[guid]::NewGuid().ToString('N')+'.tmp'
-            [IO.File]::WriteAllText($seed,($value | ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
-            [IO.File]::Move($seed,$preferences) # atomic create; never replace a file Chrome created meanwhile
-        }
-        $state.Status = 'Prepared'; Write-SfitProfileJson $journal $state
-    }
+    New-Item -ItemType Directory -Path $data -Force | Out-Null
+    # No -Force here: a race must fail rather than adopting another directory.
+    New-Item -ItemType Directory -Path $selection.ProfilePath -ErrorAction Stop | Out-Null
+    Write-SfitProfileJson $journal $state
+    Write-SfitProfileJson $marker @{Schema=1;UserSid=$sid;ProfileName=$ProfileName;ProfileToken=$state.ProfileToken}
+    # Seed ONLY this new directory, before Chrome opens it. Chrome owns Local
+    # State registration and all subsequent Preferences updates.
+    $preferences = Join-Path $selection.ProfilePath 'Preferences'
+    Assert-SfitPlainPath $preferences
+    $value = @{profile=@{name=$ProfileName;using_default_name=$false};extensions=@{pinned_extensions=@()}}
+    $seed = $preferences+'.schoollab-'+[guid]::NewGuid().ToString('N')+'.tmp'
+    [IO.File]::WriteAllText($seed,($value | ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
+    [IO.File]::Move($seed,$preferences) # atomic create, never replace
+    $state.Status = 'Prepared'; Write-SfitProfileJson $journal $state
     $selection | Add-Member NoteProperty ProfileName $ProfileName
-    $selection | Add-Member NoteProperty PreviousProfileName $state.ProfileName
-    $selection | Add-Member NoteProperty Reused $reused
+    $selection | Add-Member NoteProperty ProfileToken $state.ProfileToken
     $selection
+}
+
+function Test-SfitExamShortcut($Link,[string]$ChromeExecutable,[string]$ProfileKey) {
+    # Recognize only our exact launcher shape, including an obsolete/deleted
+    # exam directory. Other Chrome/desktop shortcuts remain untouched.
+    $pattern='^--profile-directory="SchoolLab-'+[regex]::Escape($ProfileKey)+'-[0-9a-f]{12}" --new-window "https://[^"\r\n]+"$'
+    $Link.TargetPath -ieq $ChromeExecutable -and $Link.Arguments -cmatch $pattern
 }
 
 function New-SfitExamShortcut {
@@ -165,7 +154,7 @@ function New-SfitExamShortcut {
         $previous = Join-Path $desktop ($PreviousProfileName+'.lnk'); Assert-SfitPlainPath $previous
         if (Test-Path -LiteralPath $previous) {
             $old = [SfitShortcutFile]::Read($previous)
-            if ($old.TargetPath -ieq $chrome -and $old.Arguments -match ('(?:^|\s)--profile-directory="?'+[regex]::Escape($ProfileDirectory)+'"?(?:\s|$)')) {
+            if (Test-SfitExamShortcut $old $chrome $ProfileKey) {
                 if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($previous)) -ine $desktop -or [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path)) -ine $desktop) { throw 'Shortcut rename escaped Desktop.' }
                 Move-Item -LiteralPath $previous -Destination $path # single verified owned .lnk, never recursive
             }
@@ -173,7 +162,7 @@ function New-SfitExamShortcut {
     }
     if (Test-Path -LiteralPath $path) {
         $link = [SfitShortcutFile]::Read($path)
-        if ($link.TargetPath -ine $chrome -or $link.Arguments -notmatch ('(?:^|\s)--profile-directory="?'+[regex]::Escape($ProfileDirectory)+'"?(?:\s|$)')) { throw 'An unrelated desktop shortcut already exists; it was not overwritten.' }
+        if (-not (Test-SfitExamShortcut $link $chrome $ProfileKey)) { throw 'An unrelated desktop shortcut already exists; it was not overwritten.' }
     }
     $arguments = '--profile-directory="{0}" --new-window "{1}"' -f $ProfileDirectory,$ExamUrl
     [SfitShortcutFile]::Write($path,$chrome,$arguments,(Split-Path -Parent $chrome),($ProfileName+' - '+$ExamUrl))
@@ -181,11 +170,25 @@ function New-SfitExamShortcut {
 }
 
 function Complete-SfitExamProfileName {
-    param([string]$LocalAppDataDirectory,[string]$StatePath,[string]$ProfileName,[string]$ProfileKey='OLBDB')
-    $selected = Initialize-SfitExamProfile $LocalAppDataDirectory $StatePath $ProfileName $ProfileKey
+    param([string]$LocalAppDataDirectory,[string]$StatePath,[string]$ProfileName,[string]$ProfileKey='OLBDB',
+        [string]$ExpectedProfileDirectory,[string]$ExpectedProfileToken)
+    Assert-SfitExamDisplayName $ProfileName
+    if ($ProfileKey -notmatch '^[A-Za-z][A-Za-z0-9_-]{0,31}$') { throw 'Invalid internal exam profile key.' }
+    $data = Get-SfitChromeDataPath $LocalAppDataDirectory
+    $journal = [IO.Path]::GetFullPath($StatePath)
+    if ($journal -ieq $data -or $journal.StartsWith($data+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Exam profile journal must be outside Chrome data.' }
+    Assert-SfitPlainPath $journal
     $state = Get-Content -LiteralPath $StatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    if ($state.Schema -ne 1 -or $state.Status -ne 'Prepared' -or $state.UserSid -ne $sid -or $state.UserDataDirectory -ine $data -or
+        $state.ProfileDirectory -notmatch ('^SchoolLab-'+[regex]::Escape($ProfileKey)+'-[0-9a-f]{12}$') -or
+        $state.ProfileDirectory -cne $ExpectedProfileDirectory -or $state.ProfileToken -notmatch '^[0-9a-f]{32}$' -or
+        $state.ProfileToken -cne $ExpectedProfileToken) { throw 'Current exam profile journal does not match this installation.' }
+    $selected = Get-SfitChromeProfileSelection $LocalAppDataDirectory (Join-Path $data $state.ProfileDirectory)
     $markerPath = Join-Path $selected.ProfilePath 'SchoolLab.Profile.json'
+    Assert-SfitPlainPath $markerPath
     $marker = Get-Content -LiteralPath $markerPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($marker.Schema -ne 1 -or $marker.UserSid -ne $sid -or $marker.ProfileToken -cne $state.ProfileToken) { throw 'Current exam profile ownership does not match this installation.' }
     # Call only after Chrome UI confirmed the persisted display name. These
     # records are ours; Preferences and Local State remain owned by Chrome.
     $marker.ProfileName = $ProfileName; Write-SfitProfileJson $markerPath $marker

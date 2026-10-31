@@ -1,13 +1,13 @@
 ﻿@{
     # Edit before building; the builder hashes this file into the package lock.
-    PackageRevision = '2.6.0'
+    PackageRevision = '2.6.1'
     EnableChromeExtension = $true
     ChromeExtensionDirectory = '%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB'
     ChromeExecutable = '' # Empty: discover Chrome Stable in standard locations.
-    # Preserve every existing profile; provision/reuse our own exam profile.
+    # Preserve every existing profile; create a NEW exam profile on every run.
     # Its unique directory is recorded per Windows account, not guessed by name.
     ChromeProfileDirectory = 'Dedicated'
-    ChromeProfileKey = 'OLBDB' # Stable internal identity; reuse profiles created by 2.5.0.
+    ChromeProfileKey = 'OLBDB' # Directory prefix; each run adds a fresh unique suffix.
     ChromeProfileName = 'Olympic Đặc Biệt 2026'
     ChromeAutomationTimeoutSeconds = 120
     MinimumFreeGB = 7

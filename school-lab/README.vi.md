@@ -1,11 +1,11 @@
-# SchoolLab 2.6.0 — bộ cài offline phòng tin học
+# SchoolLab 2.6.1 — bộ cài offline phòng tin học
 
 ## Chức năng chính
 
 - Cài Dev-C++ nếu thiếu; tận dụng MinGW, cấu hình compiler/debugger.
 - Cài Java JDK, Python/pip, VS Code Stable; cấu hình PATH, JAVA_HOME và extension/workspace C++/Java/Python.
-- Giữ nguyên tất cả profile Chrome cũ. Tạo profile mới **Olympic Đặc Biệt 2026**, cài SFIT vào đó, bỏ ghim extension trong Olympic Đặc Biệt 2026; không sửa dữ liệu/shortcut của profile cũ.
-- Tạo shortcut **Olympic Đặc Biệt 2026** trên Desktop để mở đúng profile và **https://utcoj.info/**. Chạy lại dùng lại profile SchoolLab đã tạo, không tạo trùng/reset.
+- Giữ nguyên tất cả profile Chrome cũ. **Mỗi lần cài SFIT đều tạo profile mới** tên **Olympic Đặc Biệt 2026**, cài SFIT vào đó và bỏ ghim extension trong profile mới. Quản trị viên có thể tự xóa profile cũ.
+- Shortcut **Olympic Đặc Biệt 2026** trên Desktop được cập nhật để mở profile vừa tạo và **https://utcoj.info/**. Thiếu file đánh dấu của profile cũ hoặc đã xóa profile cũ không chặn lượt cài mới.
 - Thi **01/11/2026, 13:00–17:00 giờ Việt Nam**. SFIT tự áp dụng/hết giờ tự ngừng; **không nhập code vào thi** hoặc tạo phiên.
 - Kiểm tra phần mềm, ghi log, bỏ qua thành phần đã đúng khi chạy lại. **Chỉ tự restart cuối cùng nếu cần**, sau khi phần mềm, VS Code và SFIT đều cài thành công.
 
@@ -13,7 +13,7 @@
 
 | Nội dung | Vị trí |
 | --- | --- |
-| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.6.0-20261031` trong repo |
+| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.6.1-20261031` trong repo |
 | Installer và extension offline | `Files\` trong bộ cài |
 | SFIT được cài trên máy trạm | `%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB` |
 | Profile Olympic Đặc Biệt 2026 | Một thư mục riêng `SchoolLab-OLBDB-...` trong `%LOCALAPPDATA%\Google\Chrome\User Data`; dùng shortcut Desktop để mở |
@@ -49,4 +49,4 @@ Trong **nguồn** `school-lab/package/LabConfig.psd1`, `AutomaticRestart = $fals
 
 SFIT chỉ kiểm soát Olympic Đặc Biệt 2026, không khóa profile/trình duyệt khác. Không tự đổi policy quản trị bên ngoài hoặc ghi đè shortcut Olympic Đặc Biệt 2026 không thuộc bộ cài này.
 
-Nếu đã cài 2.5.0 với tên OLBDB, chạy lại Install-ChromeExtension.cmd của 2.6.0 để đổi tên profile và shortcut thuộc bộ cài sang Olympic Đặc Biệt 2026. Thư mục/mã nội bộ OLBDB được giữ ổn định để không tạo thêm profile hoặc mất dữ liệu; việc đổi tên profile đang chạy thực hiện qua giao diện Chrome.
+Mỗi lần chạy cài SFIT sẽ tạo một profile mới; profile cũ được giữ nguyên để quản trị viên tự xóa khi cần. Shortcut thi do SchoolLab tạo được cập nhật sang profile mới, kể cả khi profile cũ đã bị xóa tay.

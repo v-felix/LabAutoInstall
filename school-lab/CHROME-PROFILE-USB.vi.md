@@ -1,10 +1,10 @@
-# Chrome/SFIT — SchoolLab 2.6.0
+# Chrome/SFIT — SchoolLab 2.6.1
 
 - Giữ nguyên toàn bộ profile và dữ liệu đang có, không reset/xóa hoặc chiếm một profile cũ có tên Olympic Đặc Biệt 2026.
-- Tạo profile riêng tên Olympic Đặc Biệt 2026 với thư mục duy nhất dưới Chrome User Data. Ghi journal/marker sở hữu; chạy lại dùng cùng thư mục, không sửa Preferences của profile đã tồn tại.
+- Mỗi lần chạy cài SFIT tạo profile mới tên Olympic Đặc Biệt 2026, thư mục duy nhất dưới Chrome User Data. Ghi journal/marker mới; không đọc lại journal cũ để dùng lại profile, không sửa Preferences của profile đã tồn tại.
 - Chỉ khởi tạo Preferences trong thư mục mới trước khi Chrome mở. Chrome tự đăng ký profile vào Local State; script không ghi đè Local State đang chạy.
 - Mở cửa sổ mới bằng `--profile-directory`, chỉ xét cửa sổ mới và kiểm tra Profile Path phải trùng chính xác thư mục Olympic Đặc Biệt 2026. Không chọn/nạp SFIT vào cửa sổ profile cũ.
-- Tạo Desktop/Olympic Đặc Biệt 2026.lnk trỏ đúng Chrome, đúng thư mục profile và https://utcoj.info/. Không sửa shortcut Chrome khác.
+- Tạo/cập nhật Desktop/Olympic Đặc Biệt 2026.lnk trỏ đúng Chrome, profile mới nhất và https://utcoj.info/, kể cả khi profile cũ đã bị xóa. Không sửa shortcut Chrome khác.
 - Tự mở chrome://extensions, bật Developer mode, bỏ ghim extension trong Olympic Đặc Biệt 2026 và Load unpacked SFIT. Cần native report mới và xác nhận SFIT không ghim trong cửa sổ đó mới đạt.
 - Site: https://utcoj.info/. Lịch: 01/11/2026, 13:00–17:00 (+07:00). Không code vào thi, không phiên; hết giờ tự gỡ giới hạn.
 
@@ -14,4 +14,4 @@ Log: %LOCALAPPDATA%/SchoolLab/Chrome. olbdb-profile.json ghi profile do SchoolLa
 
 Đã có kiểm tra fixture bảo toàn từng byte, chạy lại, shortcut, lịch không cần code và Chrome thật headless trong user-data-dir cô lập. Luồng UI Load unpacked vẫn cần thử trên máy ảo Windows 10/11 trước khi triển khai rộng.
 
-Nếu đã cài 2.5.0 với tên OLBDB, chạy lại Install-ChromeExtension.cmd của 2.6.0 để đổi tên profile và shortcut thuộc bộ cài sang Olympic Đặc Biệt 2026. Thư mục/mã nội bộ OLBDB được giữ ổn định để không tạo thêm profile hoặc mất dữ liệu; việc đổi tên profile đang chạy thực hiện qua giao diện Chrome.
+Mỗi lần chạy cài SFIT sẽ tạo một profile mới; profile cũ được giữ nguyên để quản trị viên tự xóa khi cần. Shortcut thi do SchoolLab tạo được cập nhật sang profile mới, kể cả khi profile cũ đã bị xóa tay.

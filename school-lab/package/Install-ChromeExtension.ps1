@@ -59,8 +59,8 @@ try {
     $profileDirectory = $selection.ProfileDirectory
     $examUrl = [string]$lock.ChromeExtension.examUrl
     if (-not $examUrl) { throw 'Missing examUrl in the Chrome payload metadata.' }
-    $shortcut = New-SfitExamShortcut $chrome $profileDirectory ([Environment]::GetFolderPath('Desktop')) $examUrl $selection.ProfileName $selection.PreviousProfileName $config.ChromeProfileKey
-    Write-SfitTrace "Dedicated profile=$profileDirectory; name=$($selection.ProfileName); reused=$($selection.Reused); shortcut=$shortcut. Existing profiles/shortcuts are untouched."
+    $shortcut = New-SfitExamShortcut $chrome $profileDirectory ([Environment]::GetFolderPath('Desktop')) $examUrl $selection.ProfileName $config.ChromeProfileKey $config.ChromeProfileKey
+    Write-SfitTrace "New dedicated profile=$profileDirectory; name=$($selection.ProfileName); shortcut=$shortcut. Existing profiles are preserved; exam shortcut points to the new profile."
     $destination = [IO.Path]::GetFullPath((Expand-LabPath $config.ChromeExtensionDirectory))
     $support = Join-Path $env:ProgramFiles 'SchoolLab\ChromeSupport'
     if (-not $destination.StartsWith($env:ProgramFiles + '\SchoolLab\',[StringComparison]::OrdinalIgnoreCase)) { throw 'ChromeExtensionDirectory must remain inside Program Files\SchoolLab.' }
@@ -124,7 +124,7 @@ try {
         if (-not $nameVerified) { Start-Sleep -Milliseconds 400 }
     }
     if (-not $nameVerified) { throw 'Chrome did not confirm the saved exam profile display name.' }
-    Complete-SfitExamProfileName $env:LOCALAPPDATA (Join-Path $logRoot 'olbdb-profile.json') $selection.ProfileName $config.ChromeProfileKey
+    Complete-SfitExamProfileName $env:LOCALAPPDATA (Join-Path $logRoot 'olbdb-profile.json') $selection.ProfileName $config.ChromeProfileKey $profileDirectory $selection.ProfileToken
     Write-SfitTrace "Profile display name verified=$($selection.ProfileName); shortcut=$shortcut."
     $pins = New-Object 'Collections.Generic.Queue[string]'
     foreach ($id in @(Get-SfitPinnedExtensions $selection.ProfilePath | Sort-Object -Unique)) { $pins.Enqueue($id) }
@@ -194,7 +194,7 @@ try {
         Start-Sleep -Milliseconds 500
     }
     if (-not $ready) {
-        throw "Chrome UI automation timed out at $step. No fresh extension handshake was received. See $logRoot. Rerun this installer to reuse OLBDB; do not select or reset an old profile."
+        throw "Chrome UI automation timed out at $step. No fresh extension handshake was received. See $logRoot. Rerunning creates a new exam profile; old profiles are preserved."
     }
     # Verify the target profile really contains SFIT, and leave SFIT unpinned.
     # This also prevents a heartbeat from another profile alone from succeeding.

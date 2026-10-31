@@ -187,3 +187,12 @@ Nguồn: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/extens
 - Hồi quy: **102** kiểm tra logic/parse, **98** kiểm tra bảo toàn Chrome profile, **81** kiểm tra SFIT integration và **19** bài runtime SFIT đều đạt. Giữ profile Olympic Đặc Biệt 2026, UTCOJ và lịch 01/11/2026 13:00–17:00 +07:00.
 - Chưa kiểm thử chuỗi cài đặt + restart + tác vụ đăng nhập thật trên Windows 10/11. Pilot cần xác nhận máy đang pending reboot vẫn đi hết bước [5/5], restart ở cuối, đăng nhập đúng tài khoản tự kiểm tra và không lặp restart; trường hợp lỗi cài đặt không được tự restart.
 - Đã build `dist/SchoolLab-2.6.0-20261031`, PackageId `20261031-0c4c2183`, 262 file có hash, khoảng 766 MiB. `Install-ChromeExtension.ps1 -ValidateOnly` đạt, lock không thay đổi; toàn bộ script trong gói khớp hash với nguồn. Không chạy installer hoặc restart thật trên máy phát triển.
+
+## SchoolLab 2.6.1 — luôn tạo profile thi mới (2026-10-31)
+
+- Theo yêu cầu mới, mỗi lượt cài SFIT tạo một thư mục profile và token mới. Không dùng lại/adopt profile đã có; journal Prepared/Creating cũ, marker thiếu/sai, profile đã xóa tay hoặc journal JSON hỏng không ngăn tạo profile mới. Giữ nguyên dữ liệu các profile cũ để quản trị viên tự xóa.
+- Shortcut Olympic Đặc Biệt 2026 của SchoolLab được cập nhật sang profile mới, kể cả khi thư mục profile cũ không còn. Chỉ nhận dạng shortcut đúng Chrome và đúng mẫu launcher SchoolLab; shortcut khác được giữ nguyên.
+- Bước xác nhận tên sau khi Chrome mở chỉ xác minh journal/marker/directory/token của đúng lượt cài hiện tại, không gọi hàm tạo profile lần nữa. Vẫn kiểm tra đúng Profile Path, Load unpacked, SFIT không ghim và native report mới trước khi đạt.
+- Windows PowerShell 5.1 đạt **116** kiểm tra profile/shortcut/bảo toàn dữ liệu, gồm hồi quy Prepared + thiếu marker như lỗi VM đã báo, journal cũ hỏng, profile cũ đã xóa, đổi shortcut sang profile mới, sai token hiện tại và không tạo profile thừa lúc xác nhận tên. Hồi quy **102** logic/parse, **81** SFIT integration, **97** restart và **19** runtime SFIT đều đạt.
+- Không sửa dữ liệu Chrome, cài phần mềm hoặc restart máy phát triển. Luồng UI thật trên Windows 10/11 vẫn cần pilot. Giữ UTCOJ, lịch 01/11/2026 13:00–17:00 +07:00 và chỉ tự restart ở cuối nếu cần.
+- Đã build `dist/SchoolLab-2.6.1-20261031`, PackageId `20261031-2874241d`, 262 file có hash, khoảng 766 MiB. ValidateOnly đạt, package-lock không đổi; script và README trong gói khớp hash với nguồn.

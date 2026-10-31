@@ -63,7 +63,7 @@ WriteJson (Join-Path $data 'Profile 5\Preferences') @{profile=@{name='OLBDB'};cu
 $originalFiles=@{}; foreach($f in Get-ChildItem -LiteralPath $local -File -Recurse){$originalFiles[$f.FullName]=(Get-FileHash -LiteralPath $f.FullName).Hash}
 $examJournal=Join-Path $local 'SchoolLab\Chrome\olbdb-profile.json'
 $exam = Initialize-SfitExamProfile $local $examJournal 'OLBDB'
-Assert ($exam.ProfileName -eq 'OLBDB' -and -not $exam.Reused) 'Fresh exam profile not created'
+Assert ($exam.ProfileName -eq 'OLBDB') 'Fresh exam profile not created'
 Assert ($exam.ProfileDirectory -match '^SchoolLab-OLBDB-[0-9a-f]{12}$') 'Exam directory is not distinct/owned'
 Assert ($exam.ProfilePath -ne (Join-Path $data 'Profile 5')) 'Adopted unrelated OLBDB profile'
 $examPreferences=Get-Content -LiteralPath (Join-Path $exam.ProfilePath 'Preferences') -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -73,17 +73,18 @@ foreach($path in $originalFiles.Keys){Assert ((Get-FileHash -LiteralPath $path).
 Set-Content -LiteralPath (Join-Path $exam.ProfilePath 'History') -Value 'KEEP EXAM PROFILE ON RETRY'
 $examHash=(Get-FileHash -LiteralPath (Join-Path $exam.ProfilePath 'Preferences')).Hash
 $again=Initialize-SfitExamProfile $local $examJournal 'OLBDB'
-Assert ($again.Reused -and $again.ProfilePath -eq $exam.ProfilePath) 'Retry created another OLBDB profile'
+Assert ($again.ProfilePath -ne $exam.ProfilePath -and $again.ProfileToken -ne $exam.ProfileToken) 'Retry did not create a distinct exam profile/token'
 Assert ((Get-FileHash -LiteralPath (Join-Path $exam.ProfilePath 'Preferences')).Hash -eq $examHash) 'Retry rewrote exam preferences'
 Assert ((Get-Content -LiteralPath (Join-Path $exam.ProfilePath 'History')) -eq 'KEEP EXAM PROFILE ON RETRY') 'Retry lost exam data'
-Assert (@(Get-SfitChromeProfiles $data | Where-Object {$_ -like 'SchoolLab-OLBDB-*'}).Count -eq 1) 'Duplicate exam profiles'
+Assert (@(Get-SfitChromeProfiles $data | Where-Object {$_ -like 'SchoolLab-OLBDB-*'}).Count -eq 2) 'Each installation must create one new exam profile'
 Throws { Initialize-SfitExamProfile $local (Join-Path $data 'unsafe-journal.json') 'OLBDB' }
 Throws { Initialize-SfitExamProfile $local (Join-Path $scratch 'bad-name.json') '..\Default' }
 $markerPath=Join-Path $exam.ProfilePath 'SchoolLab.Profile.json'
 $markerText=[IO.File]::ReadAllText($markerPath)
 $badMarker=$markerText | ConvertFrom-Json; $badMarker.ProfileToken='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 WriteJson $markerPath $badMarker
-Throws { Initialize-SfitExamProfile $local $examJournal 'OLBDB' }
+Initialize-SfitExamProfile $local $examJournal 'OLBDB' | Out-Null
+Assert ([IO.File]::ReadAllText($markerPath) -ceq (Json $badMarker)) 'New installation changed the old mismatched marker'
 [IO.File]::WriteAllText($markerPath,$markerText,[Text.UTF8Encoding]::new($false))
 # Actual .lnk operations are confined to a fake desktop/executable.
 $desktop=Join-Path $scratch 'Desktop'; $fakeChrome=Join-Path $scratch 'Application\chrome.exe'
@@ -99,15 +100,36 @@ $display='"Olympic \u0110\u1eb7c Bi\u1ec7t 2026"' | ConvertFrom-Json
 $configuration=Import-PowerShellDataFile (Join-Path $root 'package\LabConfig.psd1')
 Assert ($configuration.ChromeProfileName -ceq $display) 'PowerShell 5.1 did not decode the Vietnamese display name'
 $rename=Initialize-SfitExamProfile $local $examJournal $display
-Assert ($rename.Reused -and $rename.ProfileDirectory -eq $exam.ProfileDirectory -and $rename.PreviousProfileName -eq 'OLBDB') 'Name change created a duplicate profile instead of reusing OLBDB'
-Assert ((Get-FileHash -LiteralPath (Join-Path $exam.ProfilePath 'Preferences')).Hash -eq $examHash) 'Name migration rewrote live Chrome Preferences'
-$renamedShortcut=New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $desktop 'https://utcoj.info/' $display 'OLBDB'
+Assert ($rename.ProfileDirectory -ne $exam.ProfileDirectory) 'Name change reused an old exam profile'
+Assert ((Get-FileHash -LiteralPath (Join-Path $exam.ProfilePath 'Preferences')).Hash -eq $examHash) 'New named profile rewrote old Chrome Preferences'
+$renamedShortcut=New-SfitExamShortcut $fakeChrome $rename.ProfileDirectory $desktop 'https://utcoj.info/' $display 'OLBDB'
 Assert ((Split-Path -Leaf $renamedShortcut) -ceq ($display+'.lnk') -and -not (Test-Path -LiteralPath $shortcut)) 'Owned Desktop shortcut was not renamed to Vietnamese'
-Assert ([SfitShortcutFile]::Read($renamedShortcut).Arguments -ceq $link.Arguments) 'Shortcut rename changed the exam profile/site'
-Assert ((New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $desktop 'https://utcoj.info/' $display $display) -ceq $renamedShortcut) 'Unicode shortcut cannot be read/updated on rerun'
-Complete-SfitExamProfileName $local $examJournal $display
+Assert ([SfitShortcutFile]::Read($renamedShortcut).Arguments -ceq ('--profile-directory="{0}" --new-window "https://utcoj.info/"' -f $rename.ProfileDirectory)) 'Shortcut did not target the newly created profile/site'
+Assert ((New-SfitExamShortcut $fakeChrome $rename.ProfileDirectory $desktop 'https://utcoj.info/' $display $display) -ceq $renamedShortcut) 'Unicode shortcut cannot be read/updated within installation'
+$profileCount=@(Get-SfitChromeProfiles $data).Count
+$currentPrefsHash=(Get-FileHash -LiteralPath (Join-Path $rename.ProfilePath 'Preferences')).Hash
+Complete-SfitExamProfileName $local $examJournal $display 'OLBDB' $rename.ProfileDirectory $rename.ProfileToken
+Assert (@(Get-SfitChromeProfiles $data).Count -eq $profileCount) 'Name verification created an extra profile within the same installation'
+Assert ((Get-Content -LiteralPath $examJournal -Raw -Encoding UTF8|ConvertFrom-Json).ProfileDirectory -ceq $rename.ProfileDirectory) 'Name verification changed the current journal profile'
+Assert ((Get-FileHash -LiteralPath (Join-Path $rename.ProfilePath 'Preferences')).Hash -eq $currentPrefsHash) 'Name bookkeeping rewrote current Chrome preferences'
+Throws { Complete-SfitExamProfileName $local $examJournal $display 'OLBDB' $exam.ProfileDirectory $rename.ProfileToken }
+Throws { Complete-SfitExamProfileName $local $examJournal $display 'OLBDB' $rename.ProfileDirectory 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }
+$currentMarkerPath=Join-Path $rename.ProfilePath 'SchoolLab.Profile.json'
+$currentMarkerText=[IO.File]::ReadAllText($currentMarkerPath)
+$currentMarker=$currentMarkerText|ConvertFrom-Json;$currentMarker.ProfileToken='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+WriteJson $currentMarkerPath $currentMarker
+Throws { Complete-SfitExamProfileName $local $examJournal $display 'OLBDB' $rename.ProfileDirectory $rename.ProfileToken }
+[IO.File]::WriteAllText($currentMarkerPath,$currentMarkerText,[Text.UTF8Encoding]::new($false))
 $renameAgain=Initialize-SfitExamProfile $local $examJournal $display
-Assert ($renameAgain.Reused -and $renameAgain.PreviousProfileName -ceq $display) 'Verified name was not recorded for idempotent reruns'
+Assert ($renameAgain.ProfileDirectory -ne $rename.ProfileDirectory) 'Subsequent installation reused an old profile'
+New-SfitExamShortcut $fakeChrome $renameAgain.ProfileDirectory $desktop 'https://utcoj.info/' $display | Out-Null
+Assert ([SfitShortcutFile]::Read($renamedShortcut).Arguments.Contains($renameAgain.ProfileDirectory)) 'Existing exam shortcut was not retargeted on another installation'
+# The old shortcut may point at a profile an administrator already deleted;
+# matching launcher shape is sufficient, no old profile marker is required.
+$deletedArguments='--profile-directory="SchoolLab-OLBDB-deadbeef0000" --new-window "https://utcoj.info/"'
+[SfitShortcutFile]::Write($renamedShortcut,$fakeChrome,$deletedArguments,(Split-Path -Parent $fakeChrome),'Old exam profile')
+New-SfitExamShortcut $fakeChrome $renameAgain.ProfileDirectory $desktop 'https://utcoj.info/' $display | Out-Null
+Assert ([SfitShortcutFile]::Read($renamedShortcut).Arguments.Contains($renameAgain.ProfileDirectory)) 'Deleted old profile blocked shortcut replacement'
 Assert ((Get-FileHash -LiteralPath (Join-Path $exam.ProfilePath 'Preferences')).Hash -eq $examHash) 'Name bookkeeping changed existing Chrome preferences'
 $freshUnicode=Initialize-SfitExamProfile (Join-Path $scratch 'Unicode\Local') (Join-Path $scratch 'Unicode\exam.json') $display
 $unicodePrefs=Get-Content -LiteralPath (Join-Path $freshUnicode.ProfilePath 'Preferences') -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -119,12 +141,34 @@ $conflict=Join-Path $conflictDesktop 'OLBDB.lnk';$other=$wsh.CreateShortcut($con
 $conflictHash=(Get-FileHash -LiteralPath $conflict).Hash
 Throws { New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $conflictDesktop 'https://utcoj.info/' 'OLBDB' }
 Assert ((Get-FileHash -LiteralPath $conflict).Hash -eq $conflictHash) 'Unrelated shortcut overwritten'
-# Resume a journal written before first directory creation, without Local State.
+# An unrelated Chrome shortcut, or one with extra flags, cannot be overwritten.
+$other.TargetPath=$fakeChrome;$other.Arguments='--profile-directory="Default"';$other.Save()
+Throws { New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $conflictDesktop 'https://utcoj.info/' 'OLBDB' }
+$other.Arguments='--profile-directory="'+$exam.ProfileDirectory+'" --new-window "https://utcoj.info/" --incognito';$other.Save()
+Throws { New-SfitExamShortcut $fakeChrome $exam.ProfileDirectory $conflictDesktop 'https://utcoj.info/' 'OLBDB' }
+# Old journal cases must never block a fresh profile or mutate the old one.
+# This includes Prepared + nonempty directory + missing marker (reported VM
+# regression), partial creation, manually removed directories and invalid JSON.
 $recoveryLocal=Join-Path $scratch 'Recovery\Local'; $recoveryData=Get-SfitChromeDataPath $recoveryLocal
 $recoveryJournal=Join-Path $recoveryLocal 'SchoolLab\Chrome\olbdb-profile.json'
-WriteJson $recoveryJournal @{Schema=1;Status='Creating';UserSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;UserDataDirectory=$recoveryData;ProfileName='OLBDB';ProfileDirectory='SchoolLab-OLBDB-abcdef123456';ProfileToken='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
-$recovered=Initialize-SfitExamProfile $recoveryLocal $recoveryJournal 'OLBDB'
-Assert ($recovered.ProfileDirectory -eq 'SchoolLab-OLBDB-abcdef123456' -and (Test-Path -LiteralPath (Join-Path $recovered.ProfilePath 'Preferences'))) 'Interrupted initial creation not resumed'
+$staleDirectory='SchoolLab-OLBDB-abcdef123456';$stalePath=Join-Path $recoveryData $staleDirectory
+WriteJson (Join-Path $stalePath 'Preferences') @{profile=@{name=$display};custom=@{keep='OLD PROFILE WITHOUT MARKER'}}
+Set-Content -LiteralPath (Join-Path $stalePath 'History') -Value 'KEEP MANUALLY MANAGED PROFILE'
+$staleHash=(Get-FileHash -LiteralPath (Join-Path $stalePath 'Preferences')).Hash
+foreach($status in @('Prepared','Creating')){
+    WriteJson $recoveryJournal @{Schema=1;Status=$status;UserSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;UserDataDirectory=$recoveryData;ProfileName=$display;ProfileDirectory=$staleDirectory;ProfileToken='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
+    $recovered=Initialize-SfitExamProfile $recoveryLocal $recoveryJournal $display
+    Assert ($recovered.ProfileDirectory -ne $staleDirectory -and (Test-Path -LiteralPath (Join-Path $recovered.ProfilePath 'SchoolLab.Profile.json'))) "Old $status journal blocked fresh profile"
+    Assert ((Get-FileHash -LiteralPath (Join-Path $stalePath 'Preferences')).Hash -eq $staleHash) 'Missing-marker recovery overwrote old preferences'
+    Assert (-not (Test-Path -LiteralPath (Join-Path $stalePath 'SchoolLab.Profile.json'))) 'Missing-marker recovery adopted the old profile'
+}
+WriteJson $recoveryJournal @{Schema=1;Status='Prepared';UserSid='S-1-5-18';UserDataDirectory='C:\Removed\User Data';ProfileName='OLBDB';ProfileDirectory='SchoolLab-OLBDB-deadbeef0000';ProfileToken='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
+$recovered=Initialize-SfitExamProfile $recoveryLocal $recoveryJournal $display
+Assert ($recovered.ProfileDirectory -ne 'SchoolLab-OLBDB-deadbeef0000') 'Manually removed/foreign old profile blocked setup'
+Set-Content -LiteralPath $recoveryJournal -Value 'INVALID OLD JOURNAL JSON'
+$recovered=Initialize-SfitExamProfile $recoveryLocal $recoveryJournal $display
+Assert ((Get-Content -LiteralPath $recoveryJournal -Raw -Encoding UTF8|ConvertFrom-Json).ProfileDirectory -ceq $recovered.ProfileDirectory) 'Corrupt old journal blocked fresh setup'
+Assert ((Get-Content -LiteralPath (Join-Path $stalePath 'History')) -eq 'KEEP MANUALLY MANAGED PROFILE') 'Fresh setup changed old profile history'
 Assert (-not (Test-Path -LiteralPath (Join-Path $recoveryData 'Local State'))) 'SchoolLab rewrote Chrome Local State'
 
 # All registry mutations below use our own disposable HKCU test key.
