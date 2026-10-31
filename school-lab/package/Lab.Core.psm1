@@ -496,6 +496,27 @@ function New-LabLanguageWorkspaces {
         # Windows PowerShell's UTF8 encoding adds a BOM; javac rejects that BOM.
         if (-not (Test-Path -LiteralPath $path)) { [IO.File]::WriteAllText($path,$files[$path],(New-Object Text.UTF8Encoding($false))) }
     }
+    # Code Runner placeholders quote full paths themselves. Pin CMD for these
+    # classrooms so && works consistently on Windows 10/11 and supports stdin.
+    $runner=@{
+        'code-runner.runInTerminal'=$true
+        'code-runner.saveFileBeforeRun'=$true
+        'code-runner.ignoreSelection'=$true
+        'terminal.integrated.defaultProfile.windows'='Command Prompt'
+        'terminal.integrated.profiles.windows'=@{'Command Prompt'=@{path=(Join-Path $env:SystemRoot 'System32\cmd.exe');args=@('/d')}}
+        'code-runner.executorMap'=@{
+            cpp=('cd /d $dir && "{0}" $fullFileName -std={1} -g -o "$fileNameWithoutExt.exe" && ".\$fileNameWithoutExt.exe"' -f $MinGW.Gpp,$Standard)
+            java=('cd /d $dir && "{0}" -encoding UTF-8 $fullFileName && "{1}" -cp . "$fileNameWithoutExt"' -f (Join-Path $JavaHome 'bin\javac.exe'),(Join-Path $JavaHome 'bin\java.exe'))
+            python=('cd /d $dir && "{0}" -u $fullFileName' -f $pythonExe)
+        }
+    }
+    foreach($directory in @($cpp,$java,$python)){
+        $path=Join-Path $directory '.vscode\settings.json'
+        $value=@{}
+        if(Test-Path -LiteralPath $path){$existing=Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json;foreach($property in $existing.PSObject.Properties){$value[$property.Name]=$property.Value}}
+        foreach($key in $runner.Keys){$value[$key]=$runner[$key]}
+        [IO.File]::WriteAllText($path,($value|ConvertTo-Json -Depth 15),[Text.UTF8Encoding]::new($false))
+    }
     [pscustomobject]@{Cpp=$cpp;Java=$java;Python=$python}
 }
 

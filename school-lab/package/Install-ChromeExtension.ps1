@@ -1,6 +1,6 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([string]$PackageRoot = '', [switch]$NoElevation, [switch]$ValidateOnly)
+param([string]$PackageRoot = '', [switch]$NoElevation, [switch]$ValidateOnly,[switch]$CurrentDesktopUser)
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 if (-not $PackageRoot) { $PackageRoot = $PSScriptRoot }
@@ -28,12 +28,18 @@ try {
     $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
     if (-not [Environment]::Is64BitProcess) { $ps = "$env:SystemRoot\Sysnative\WindowsPowerShell\v1.0\powershell.exe" }
     $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if (-not $admin -or -not [Environment]::Is64BitProcess) {
+    if ((-not $admin -and -not $CurrentDesktopUser) -or -not [Environment]::Is64BitProcess) {
         if ($NoElevation) { throw 'Administrator and x64 Windows PowerShell are required.' }
         $argsList = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$PSCommandPath,'-PackageRoot',$PackageRoot,'-NoElevation')
         $options = @{FilePath=$ps;ArgumentList=(($argsList | ForEach-Object { ConvertTo-LabArgument $_ }) -join ' ');Wait=$true;PassThru=$true}
         if (-not $admin) { $options.Verb = 'RunAs' }
         exit (Start-Process @options).ExitCode
+    }
+    if (-not $CurrentDesktopUser) {
+        Import-Module (Join-Path $PackageRoot 'Desktop.Setup.psm1') -Force
+        $desktopResult=Invoke-LabDesktopSetup -PackageRoot $PackageRoot -ChromeOnly
+        Write-Host "Desktop SFIT result: $($desktopResult.ExitCode) $($desktopResult.Error)"
+        exit $desktopResult.ExitCode
     }
     $mutex = [Threading.Mutex]::new($false,'Global\SchoolLab-Chrome-Installer')
     try { $held = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $held = $true }
@@ -67,9 +73,8 @@ try {
     if (-not $examUrl) { throw 'Missing examUrl in the Chrome payload metadata.' }
     $shortcut = New-SfitExamShortcut $chrome $profileDirectory ([Environment]::GetFolderPath('Desktop')) $examUrl $selection.ProfileName $config.ChromeProfileKey $config.ChromeProfileKey
     Write-SfitTrace "New dedicated profile=$profileDirectory; name=$($selection.ProfileName); shortcut=$shortcut. Existing profiles are preserved; exam shortcut points to the new profile."
-    $destination = [IO.Path]::GetFullPath((Expand-LabPath $config.ChromeExtensionDirectory))
-    $support = Join-Path $env:ProgramFiles 'SchoolLab\ChromeSupport'
-    if (-not $destination.StartsWith($env:ProgramFiles + '\SchoolLab\',[StringComparison]::OrdinalIgnoreCase)) { throw 'ChromeExtensionDirectory must remain inside Program Files\SchoolLab.' }
+    $destination = Join-Path $env:LOCALAPPDATA 'SchoolLab\ChromeExtension\OLBDB'
+    $support = Join-Path $env:LOCALAPPDATA 'SchoolLab\ChromeSupport'
     New-Item -ItemType Directory -Path $destination,$support -Force | Out-Null
     Get-ChildItem -LiteralPath (Join-Path $PackageRoot 'Files\ChromeExtension') -File | Copy-Item -Destination $destination -Force
     Copy-Item -LiteralPath (Join-Path $PackageRoot 'Files\Sfit.NativeHost.exe') -Destination $support -Force
@@ -80,7 +85,7 @@ try {
     Write-SfitJson (Join-Path $destination 'deployment.json') @{token=$token;packageId=$lock.PackageId}
     $manifestPath = Join-Path $support 'vn.schoollab.sfit.json'
     Write-SfitJson $manifestPath @{name='vn.schoollab.sfit';description='SFIT installation status bridge';path=(Join-Path $support 'Sfit.NativeHost.exe');type='stdio';allowed_origins=@("chrome-extension://$($extension.id)/")}
-    $registry = 'HKLM:\SOFTWARE\Google\Chrome\NativeMessagingHosts\vn.schoollab.sfit'
+    $registry = 'HKCU:\SOFTWARE\Google\Chrome\NativeMessagingHosts\vn.schoollab.sfit'
     New-Item -Path $registry -Force | Out-Null
     Set-Item -LiteralPath $registry -Value $manifestPath
 

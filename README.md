@@ -1,18 +1,21 @@
 # LabAutoInstall
 
-**Offline Classroom Setup Toolkit — SchoolLab 2.6.3**
+**Offline Classroom Setup Toolkit — SchoolLab 2.7.1**
 
 Bộ cài offline cho phòng thực hành Windows 10/11 x64, chạy bằng Administrator từ USB hoặc LAN.
 
-Thư mục chuẩn trên máy chuẩn bị: **`D:\UTC\AutoInstallToolkit\LabAutoInstall`**. Bản dùng để triển khai là **`school-lab\dist\SchoolLab-2.6.3-20261031`** (khoảng **766 MiB**); chép nguyên thư mục này sang USB. Hai file `.cmd` ngoài cùng gọi đúng bản đó.
+Thư mục chuẩn trên máy chuẩn bị: **`D:\UTC\AutoInstallToolkit\LabAutoInstall`**. Bản dùng để triển khai là **`school-lab\dist\SchoolLab-2.7.1-20261031`** (khoảng **766 MiB**); chép nguyên thư mục này sang USB. Hai file `.cmd` ngoài cùng gọi đúng bản đó.
 
-Dọn các bản build cũ và dữ liệu/log thử nghiệm: chạy **[school-lab/Clean-Workspace.cmd](school-lab/Clean-Workspace.cmd)** một lần. File này giữ bản 2.6.3, mã nguồn và bài kiểm tra tự động; kiểm tra hash bản hiện hành trước/sau khi xóa. Gói cài giải nén khoảng **766 MiB**, chưa tính các file ZIP bạn giữ riêng. Các bài kiểm tra nguồn không cần chép sang máy trạm.
+Dọn các bản build cũ và dữ liệu/log thử nghiệm: chạy **[school-lab/Clean-Workspace.cmd](school-lab/Clean-Workspace.cmd)** một lần. File này giữ bản 2.7.1, mã nguồn và bài kiểm tra tự động; kiểm tra hash bản hiện hành trước/sau khi xóa. Gói cài giải nén khoảng **766 MiB**, chưa tính các file ZIP bạn giữ riêng. Các bài kiểm tra nguồn không cần chép sang máy trạm.
 
-Bản 2.6.2 đã được người dùng xác nhận chạy ổn trên Windows 10. Bản 2.6.3 sửa thêm nhận diện tài khoản Desktop bằng SID trực tiếp từ Windows; cần thử lại trên máy lớp đã báo lỗi. Windows 11 x64 nằm trong phạm vi hỗ trợ nhưng vẫn cần kiểm thử một máy trước khi triển khai rộng.
+Bản 2.6.2 đã được người dùng xác nhận chạy ổn trên Windows 10. Bản 2.7.1 sửa thêm nhận diện tài khoản Desktop bằng SID trực tiếp từ Windows; cần thử lại trên máy lớp đã báo lỗi. Windows 11 x64 nằm trong phạm vi hỗ trợ nhưng vẫn cần kiểm thử một máy trước khi triển khai rộng.
 
 ## Chức năng chính
 
+Bản 2.7.1 tách quyền Admin khỏi tài khoản thực hành: phần mềm cài toàn máy; tác vụ Interactive/Limited chạy cấu hình VS Code và SFIT trong đúng SID/session của Desktop. Khi UAC dùng admin khác, không cần đổi tài khoản Desktop. SFIT/native host lưu theo người dùng, đăng ký HKCU. Chỉ báo hoàn tất sau khi tác vụ tài khoản trả đúng kết quả. Luồng bàn giao hai tài khoản cần chạy pilot trên máy lớp trước khi nhân rộng.
+
 - Cài Dev-C++, Java JDK, Python/pip và VS Code Stable; cấu hình PATH, JAVA_HOME, extension và workspace C++/Java/Python.
+- Code Runner 0.12.2 được đóng gói offline; Ctrl+Alt+N chạy C++/Java/Python trong Terminal ở các workspace SchoolLab, có nhập dữ liệu và lưu file trước khi chạy.
 - **Giữ nguyên mọi profile và dữ liệu Chrome đang có.** Tạo một profile riêng tên **Olympic Đặc Biệt 2026**, cài SFIT vào đó và bỏ ghim extension trên profile Olympic Đặc Biệt 2026. Không cài/bỏ ghim trên các profile cũ.
 - Tạo shortcut **Olympic Đặc Biệt 2026** trên Desktop, mở đúng profile thi và **https://utcoj.info/**. **Mỗi lần cài SFIT đều tạo profile mới**; shortcut thi trỏ sang profile vừa tạo. Giữ các profile cũ để quản trị viên tự xóa, không phụ thuộc thông tin profile còn sót lại từ lần cài trước.
 - SFIT tự áp dụng từ **13:00 đến 17:00 ngày 01/11/2026, giờ Việt Nam**. Không nhập mã vào thi, không tạo phiên. Hết giờ tự ngừng giới hạn.
@@ -23,7 +26,7 @@ Bản 2.6.2 đã được người dùng xác nhận chạy ổn trên Windows 1
 - **[Install-Lab.cmd](Install-Lab.cmd)**: cài toàn bộ phần mềm và chuẩn bị Olympic Đặc Biệt 2026/SFIT.
 - **[Install-ChromeExtension.cmd](Install-ChromeExtension.cmd)**: chỉ chuẩn bị/cập nhật Olympic Đặc Biệt 2026, SFIT và shortcut.
 
-Chuột phải → **Run as administrator**. Hai file gọi bộ cài tại `school-lab\dist\SchoolLab-2.6.3-20261031`; cần build trước hoặc chép nguyên bộ cài đã có vào đúng vị trí đó. Chrome Stable 120+ cần có sẵn. Có thể giữ Chrome cũ đang mở; để máy yên khi script tự mở và cấu hình cửa sổ Olympic Đặc Biệt 2026. Đóng VS Code nếu cài toàn bộ.
+Chuột phải → **Run as administrator**. Hai file gọi bộ cài tại `school-lab\dist\SchoolLab-2.7.1-20261031`; cần build trước hoặc chép nguyên bộ cài đã có vào đúng vị trí đó. Chrome Stable 120+ cần có sẵn. Có thể giữ Chrome cũ đang mở; để máy yên khi script tự mở và cấu hình cửa sổ Olympic Đặc Biệt 2026. Đóng VS Code nếu cài toàn bộ.
 
 Nếu có yêu cầu restart (mã **3010**), script vẫn cài VS Code/SFIT xong trước, sau đó đếm ngược **60 giây**. Lưu công việc; **Ctrl+C** hủy đếm ngược. Sau restart, đăng nhập lại **đúng tài khoản Windows đã cài**; script tự kiểm tra kết quả từ ổ máy, không cần USB hoặc mở lại bộ cài. Không tự đăng nhập Windows, không restart lặp. Lỗi cài đặt thật sẽ dừng và ghi log, không tự restart. Ứng dụng còn tài liệu chưa lưu có thể giữ máy ở màn hình xác nhận restart.
 
@@ -35,7 +38,7 @@ Khi kết quả đã đạt và hoàn tất restart nếu có, ngày thi chỉ c
 | --- | --- |
 | Script nguồn | `school-lab/package/` |
 | Nguồn SFIT, sửa trước khi build | [1-sfit-tracker/config.js](1-sfit-tracker/config.js) |
-| Bộ cài hoàn chỉnh, chép nguyên thư mục sang USB | `school-lab/dist/SchoolLab-2.6.3-20261031/` |
+| Bộ cài hoàn chỉnh, chép nguyên thư mục sang USB | `school-lab/dist/SchoolLab-2.7.1-20261031/` |
 | Sửa lịch trên USB, không cần build lại | `Files/ChromeExtension/config.js` bên trong bộ cài |
 | Phiên bản/URL/hash của installer và VSIX | `school-lab/sources-lock.json` |
 
@@ -63,7 +66,7 @@ if (-not (Test-Path .\downloads\current\sources-lock.json)) {
 }
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Get-OfflinePayloads.ps1
 # Chạy sau khi tải thành công; output phải là thư mục chưa tồn tại.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-OfflinePackage.ps1 -OutputDirectory .\dist\SchoolLab-2.6.3-20261031
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-OfflinePackage.ps1 -OutputDirectory .\dist\SchoolLab-2.7.1-20261031
 ```
 
 Git chứa mã nguồn, không chứa các installer/VSIX dung lượng lớn, `dist` hoặc log thử nghiệm. Máy trạm dùng nguyên bộ cài đã build để cài offline.

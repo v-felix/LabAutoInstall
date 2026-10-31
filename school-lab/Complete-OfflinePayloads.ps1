@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 <# Add Dev-C++ and the complete Java/Python VSIX dependency closure to pinned base downloads. #>
 [CmdletBinding()]
 param([string]$Destination = '')
@@ -31,7 +31,7 @@ if (-not $dev.Count) {
 }
 Save-Asset ($sources.Assets | Where-Object Name -eq 'DevCpp')
 $queue = New-Object 'Collections.Generic.Queue[string]'
-foreach ($id in @('ms-vscode.cpptools','redhat.java','vscjava.vscode-java-debug','ms-python.python','ms-python.debugpy','ms-python.vscode-pylance')) { $queue.Enqueue($id) }
+foreach ($id in @('ms-vscode.cpptools','redhat.java','vscjava.vscode-java-debug','ms-python.python','ms-python.debugpy','ms-python.vscode-pylance','formulahendry.code-runner')) { $queue.Enqueue($id) }
 $seen = @{}
 while ($queue.Count) {
     $id = $queue.Dequeue()

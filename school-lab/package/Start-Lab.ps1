@@ -102,71 +102,29 @@ try {
         if ($machineExit -eq 3010 -and $report.Status -eq 'DeferredReboot') { exit 3010 }
         throw "Machine phase did not pass: $($report.Status). No automatic restart was requested."
     }
-    $context = Wait-LabClassroomContext -TimeoutSeconds 15
-    Write-LabJson (Join-Path $report.LogDirectory 'classroom-context.json') $context
-    if ($context.Ready) {
-        Write-Host "[4/$totalStages] Configuring offline C++, Java and Python extensions for this classroom account..."
-        $support = Expand-LabPath $sourceConfig.SupportDirectory
-        & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $support 'Initialize-LabUser.ps1')
-        $userExit = $LASTEXITCODE
-        $userWaitUntil = [datetime]::UtcNow.AddSeconds(180)
-        while ($userExit -eq 69021 -and [datetime]::UtcNow -lt $userWaitUntil) {
-            Start-Sleep -Seconds 5
-            & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $support 'Initialize-LabUser.ps1')
-            $userExit = $LASTEXITCODE
-        }
-        $row = $report.Components | Where-Object Name -eq 'UserProvisioning'
-        if ($userExit -eq 0) {
-            $userResult = Get-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'SchoolLab\result.json') -Raw | ConvertFrom-Json
-            if ($userResult.Status -ne 'Passed' -or $userResult.PackageId -ne $lock.PackageId) { throw 'Classroom account verification did not complete.' }
-            $row.Status = 'Passed'
-            $row.Details = 'C++, Java and Python extensions, workspaces and account smoke tests passed.'
-            $report.Status = 'MachinePassed_UserReady'
-            if ($sourceConfig.EnableChromeExtension) {
-                Write-Host '[5/5] Installing and verifying SFIT Tracker in the selected Chrome profile...'
-                & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $stage 'Install-ChromeExtension.ps1') -PackageRoot $stage
-                $chromeExit = $LASTEXITCODE
-                $chromeRow = $report.Components | Where-Object Name -eq 'ChromeExtension'
-                $chromeRow.ExitCode = $chromeExit
-                $chromeRow.Status = if ($chromeExit -eq 0) { 'Passed' } else { 'Failed' }
-                $chromeRow.Details = 'See %LOCALAPPDATA%\SchoolLab\Chrome\result.json. Selected profile only.'
-                if ($chromeExit -ne 0) {
-                    $report.Status = 'MachinePassed_ChromeSetupFailed'; $report.ExitCode = 69030
-                    $report.Error = $chromeRow.Details
-                    Write-LabJson (Join-Path $report.LogDirectory 'result.json') $report
-                    Write-LabJson $resultPath $report
-                    $report.Components | Export-Csv -LiteralPath (Join-Path $report.LogDirectory 'components.csv') -NoTypeInformation -Encoding UTF8
-                    exit 69030
-                }
-            }
-            if ($report.RebootRequired) {
-                Write-Host 'CAI DAT DA XONG: All components passed. A final restart is required before handover.' -ForegroundColor Yellow
-            } else {
-                Write-Host 'SAN SANG: This classroom account passed setup. Open samples and verify the exam schedule before handover.' -ForegroundColor Green
-            }
-        } else {
-            $row.Status = 'Failed'; $row.ExitCode = $userExit
-            $row.Details = 'See %LOCALAPPDATA%\SchoolLab\initialize.log and result.json.'
-            $report.Status = 'MachinePassed_UserSetupFailed'
-            $report.Error = $row.Details
-            $report.ExitCode = 69020
-        }
-        Write-LabJson (Join-Path $report.LogDirectory 'result.json') $report
-        Write-LabJson $resultPath $report
-        $report.Components | Export-Csv -LiteralPath (Join-Path $report.LogDirectory 'components.csv') -NoTypeInformation -Encoding UTF8
-        if ($userExit -ne 0) { exit 69020 }
-    } else {
-        Write-Host 'APPLICATIONS INSTALLED. Classroom account setup is pending.' -ForegroundColor Yellow
-        Write-Host $context.Message -ForegroundColor Yellow
-        Write-Host "Desktop account diagnostic: $($report.LogDirectory)\classroom-context.json"
-        Write-Host 'Sign into the account used in class, wait for automatic initialization, then run Check-LabReady.cmd.'
-    }
+    Import-Module (Join-Path $stage 'Desktop.Setup.psm1') -Force
+    Write-Host '[4/5] Configuring VS Code and SFIT in the actual desktop account...'
+    $desktopResult=Invoke-LabDesktopSetup -PackageRoot $stage
+    $report | Add-Member NoteProperty DesktopSetup $desktopResult -Force
+    $report | Add-Member NoteProperty LauncherExitCode $desktopResult.ExitCode -Force
+    $userRow=$report.Components|Where-Object Name -eq 'UserProvisioning'
+    $chromeRow=$report.Components|Where-Object Name -eq 'ChromeExtension'
+    $userRow.ExitCode=$desktopResult.UserExitCode
+    $userRow.Status=if($desktopResult.UserExitCode -eq 0){'Passed'}else{'Failed'}
+    $chromeRow.ExitCode=$desktopResult.ChromeExitCode
+    $chromeRow.Status=if(-not $sourceConfig.EnableChromeExtension){'Disabled'}elseif($desktopResult.ChromeExitCode -eq 0){'Passed'}else{'Failed'}
+    $report.Status=if($desktopResult.ExitCode -eq 0){'MachinePassed_UserReady'}else{'MachinePassed_ChromeSetupFailed'}
+    Write-LabJson $resultPath $report
+    Write-LabJson (Join-Path $report.LogDirectory 'result.json') $report
+    $report.Components|Export-Csv -LiteralPath (Join-Path $report.LogDirectory 'components.csv') -NoTypeInformation -Encoding UTF8
+    if($desktopResult.ExitCode -ne 0){Write-Host $desktopResult.Error -ForegroundColor Red;exit $desktopResult.ExitCode}
+    Write-Host 'DESKTOP SETUP PASSED: VS Code and SFIT verified in the desktop account.' -ForegroundColor Green
     Write-Host "Machine log: $($report.LogDirectory)"
     # This is the ONLY automatic-restart site. All machine, account and Chrome
     # steps have completed; genuine failures above exit without restarting.
-    $finalAction = Get-LabFinalRestartDecision $report $sourceConfig.AutomaticRestart (Test-LabClassroomContext)
+    $finalAction = Get-LabFinalRestartDecision $report $sourceConfig.AutomaticRestart ($desktopResult.ExitCode -eq 0)
     if ($finalAction -eq 'Restart') {
-        $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        $sid = $desktopResult.UserSid
         $resumeState = New-LabResumeState $stage $lock.PackageId $sid $env:COMPUTERNAME $bootUtc
         $ResumeStatePath = Join-Path $installRoot ('Resume\'+$resumeState.Id+'.json')
         Assert-LabResumeState $resumeState $ResumeStatePath $installRoot $sid $env:COMPUTERNAME

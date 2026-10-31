@@ -84,12 +84,12 @@ $spec=Get-LabResumeTaskSpec $state $path
 Assert-Equal $spec.Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') 'Pinned Windows PowerShell 5.1'
 Assert-Equal $spec.UserSid $sid 'Same Windows account only'
 Assert-Equal $spec.LogonType 'Interactive' 'No stored password or automatic sign-in'
-Assert-Equal $spec.RunLevel 'Highest' 'Resume without new UAC prompt'
+Assert-Equal $spec.RunLevel 'Limited' 'Resume without new UAC prompt'
 Assert-Equal $spec.Delay 'PT30S' 'Wait for desktop after login'
 Assert-Equal ($spec.Arguments.Contains($stage)) $true 'Resume from protected local stage'
 Assert-Equal ($spec.Arguments.Contains($path)) $true 'Resume bound to exact journal'
 $task=[pscustomobject]@{TaskName=$spec.Name;TaskPath='\';Description=$spec.Description;
-    Principal=[pscustomobject]@{UserId=$sid;LogonType='Interactive';RunLevel='Highest'};
+    Principal=[pscustomobject]@{UserId=$sid;LogonType='Interactive';RunLevel='Limited'};
     Actions=@([pscustomobject]@{Execute=$spec.Execute;Arguments=$spec.Arguments;WorkingDirectory=$spec.WorkingDirectory})}
 Assert-Equal (Test-LabResumeTaskIdentity $task $spec) $true 'Exact owned task recognized'
 $task.Actions[0].Arguments+=' -AnythingElse'
@@ -105,7 +105,7 @@ Import-Module ScheduledTasks -ErrorAction Stop
 $action=New-ScheduledTaskAction -Execute $spec.Execute -Argument $spec.Arguments -WorkingDirectory $spec.WorkingDirectory
 $trigger=New-ScheduledTaskTrigger -AtLogOn -User $spec.UserSid
 $trigger.Delay=$spec.Delay
-$principal=New-ScheduledTaskPrincipal -UserId $spec.UserSid -LogonType Interactive -RunLevel Highest
+$principal=New-ScheduledTaskPrincipal -UserId $spec.UserSid -LogonType Interactive -RunLevel Limited
 $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit ([timespan]::FromHours(2))
 $memoryTask=[pscustomobject]@{TaskName=$spec.Name;TaskPath='\';Description=$spec.Description;Principal=$principal;Actions=@($action)}
 Assert-Equal (Test-LabResumeTaskIdentity $memoryTask $spec) $true 'Real CIM principal/action match expected identity'

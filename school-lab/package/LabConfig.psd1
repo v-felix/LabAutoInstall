@@ -1,8 +1,8 @@
 ﻿@{
     # Edit before building; the builder hashes this file into the package lock.
-    PackageRevision = '2.6.3'
+    PackageRevision = '2.7.1'
     EnableChromeExtension = $true
-    ChromeExtensionDirectory = '%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB'
+    ChromeExtensionDirectory = '%LOCALAPPDATA%\SchoolLab\ChromeExtension\OLBDB'
     ChromeExecutable = '' # Empty: discover Chrome Stable in standard locations.
     # Preserve every existing profile; create a NEW exam profile on every run.
     # Its unique directory is recorded per Windows account, not guessed by name.
@@ -26,7 +26,7 @@
     DevCppSearchPatterns = @('%ProgramFiles(x86)%\Dev-Cpp', '%ProgramFiles%\Dev-Cpp',
         '%ProgramFiles(x86)%\Embarcadero\Dev-Cpp', '%ProgramFiles%\Embarcadero\Dev-Cpp', 'C:\Dev-Cpp')
     RequiredExtensionIds = @('ms-vscode.cpptools','redhat.java','vscjava.vscode-java-debug',
-        'ms-python.python','ms-python.debugpy','ms-python.vscode-pylance')
+        'ms-python.python','ms-python.debugpy','ms-python.vscode-pylance','formulahendry.code-runner')
     # Specify the FULL bin directory if automatic discovery is ambiguous.
     MinGWBin = ''
     MinGWSearchPatterns = @(

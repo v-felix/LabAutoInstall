@@ -1,9 +1,12 @@
-# SchoolLab 2.6.3 — bộ cài offline phòng tin học
+# SchoolLab 2.7.1 — bộ cài offline phòng tin học
 
 ## Chức năng chính
 
+**2.7.1:** UAC có thể dùng Admin khác với tài khoản Desktop. Phần cài toàn máy dùng Admin; cấu hình VS Code/SFIT chạy tự động trong tài khoản Desktop bằng tác vụ giới hạn quyền, không lưu mật khẩu. Native host và extension nằm trong LOCALAPPDATA/HKCU của đúng người dùng. Sau restart, kiểm tra cũng chạy trong tài khoản Desktop.
+
 - Cài Dev-C++ nếu thiếu; tận dụng MinGW, cấu hình compiler/debugger.
 - Cài Java JDK, Python/pip, VS Code Stable; cấu hình PATH, JAVA_HOME và extension/workspace C++/Java/Python.
+- Có Code Runner 0.12.2 offline. Mở bài trong shortcut SchoolLab C++/Java/Python, chọn Run Code hoặc Ctrl+Alt+N. Chạy trong Terminal, nhập được cin/Scanner/input; tự lưu file trước khi chạy. Workspace dùng Command Prompt và đường dẫn compiler/JDK/Python đã xác định. Java Code Runner dùng cho bài một file không khai báo package; dự án Java dùng Run/Debug Java có sẵn.
 - Giữ nguyên tất cả profile Chrome cũ. **Mỗi lần cài SFIT đều tạo profile mới** tên **Olympic Đặc Biệt 2026**, cài SFIT vào đó và bỏ ghim extension trong profile mới. Quản trị viên có thể tự xóa profile cũ.
 - Shortcut **Olympic Đặc Biệt 2026** trên Desktop được cập nhật để mở profile vừa tạo và **https://utcoj.info/**. Thiếu file đánh dấu của profile cũ hoặc đã xóa profile cũ không chặn lượt cài mới.
 - Thi **01/11/2026, 13:00–17:00 giờ Việt Nam**. SFIT tự áp dụng/hết giờ tự ngừng; **không nhập code vào thi** hoặc tạo phiên.
@@ -13,9 +16,9 @@
 
 | Nội dung | Vị trí |
 | --- | --- |
-| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.6.3-20261031` trong repo |
+| Bộ cài dùng để chép nguyên thư mục sang USB/LAN | `school-lab\dist\SchoolLab-2.7.1-20261031` trong repo |
 | Installer và extension offline | `Files\` trong bộ cài |
-| SFIT được cài trên máy trạm | `%ProgramFiles%\SchoolLab\ChromeExtension\OLBDB` |
+| SFIT được cài trên máy trạm | `%LOCALAPPDATA%\SchoolLab\ChromeExtension\OLBDB` |
 | Profile Olympic Đặc Biệt 2026 | Một thư mục riêng `SchoolLab-OLBDB-...` trong `%LOCALAPPDATA%\Google\Chrome\User Data`; dùng shortcut Desktop để mở |
 | Log phần mềm | `%ProgramData%\SchoolLab\Logs\<Tên máy>` |
 | Log SFIT và thông tin profile/shortcut | `%LOCALAPPDATA%\SchoolLab\Chrome` |
@@ -44,7 +47,7 @@ Giữ `enabled: true`, múi giờ `+07:00`, giờ 24 tiếng và kết thúc sau
 4. Nếu cần restart (mã **3010**), script cài xong mọi bước rồi đếm ngược **60 giây** và restart. Lưu công việc; **Ctrl+C** hủy đếm ngược. Đăng nhập lại **đúng tài khoản Windows đã cài**, script tự kiểm tra từ ổ máy, không cần USB/chạy lại bộ cài. Không cần restart thì kết thúc mã **0**.
 5. Ngày thi, mở shortcut **Olympic Đặc Biệt 2026** trên Desktop. Không cần USB hoặc nhập mã vào thi; kiểm tra đồng hồ máy trước buổi thi.
 
-Bản 2.6.3 xác minh SID trực tiếp bằng token Desktop và phiên đăng nhập Windows, không phụ thuộc WMI của Explorer. Trường hợp một tài khoản Admin dùng trực tiếp sẽ được đối chiếu đúng SID. Nếu không xác minh được, script chờ tối đa 15 giây và lưu `classroom-context.json`; không tự kết luận là có admin khác. Nếu UAC dùng tài khoản khác với Desktop thật, cần đăng nhập trực tiếp tài khoản admin dùng cho lớp rồi chạy lại.
+Bản 2.7.1 tự bàn giao cấu hình sang đúng SID/session Desktop khi UAC dùng admin khác. Nếu lỗi, xem kết quả tác vụ trong %ProgramData%\SchoolLab\DesktopSetup và log SFIT của tài khoản Desktop.
 
 Không tự đăng nhập Windows hoặc tự restart thêm lần nữa sau kiểm tra. Ứng dụng có tài liệu chưa lưu có thể chặn restart. Nếu còn lỗi/còn yêu cầu restart, xem log và chạy `Check-LabReady.cmd` sau khi xử lý. Lỗi cài đặt thật sẽ dừng, không bị bỏ qua để restart. Chế độ không có Desktop/tài khoản lớp đang đăng nhập chỉ cài phần mềm và báo các bước còn thiếu, không tự restart.
 

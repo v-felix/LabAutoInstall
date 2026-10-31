@@ -75,8 +75,8 @@ function Get-LabFinalRestartDecision {
 function Get-LabResumeTaskSpec {
     param($State,[string]$StatePath)
     [pscustomobject]@{Name=$State.TaskName;UserSid=$State.UserSid;Execute=(Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe');
-        Arguments=('-NoLogo -NoProfile -ExecutionPolicy Bypass -File "{0}" -NoElevation -ResumeStatePath "{1}"' -f (Join-Path $State.StageRoot 'Start-Lab.ps1'),$StatePath);
-        WorkingDirectory=$State.StageRoot;Description=('SchoolLab automatic resume '+$State.Id);LogonType='Interactive';RunLevel='Highest';Delay='PT30S'}
+        Arguments=('-NoLogo -NoProfile -ExecutionPolicy Bypass -File "{0}" -ResumeStatePath "{1}"' -f (Join-Path $State.StageRoot 'Confirm-LabAfterRestart.ps1'),$StatePath);
+        WorkingDirectory=$State.StageRoot;Description=('SchoolLab automatic resume '+$State.Id);LogonType='Interactive';RunLevel='Limited';Delay='PT30S'}
 }
 
 function Test-LabResumeTaskIdentity {
@@ -85,7 +85,7 @@ function Test-LabResumeTaskIdentity {
     $account=[string]$Task.Principal.UserId
     try{if($account -notmatch '^S-1-'){ $account=([Security.Principal.NTAccount]$account).Translate([Security.Principal.SecurityIdentifier]).Value }}catch{return $false}
     $Task.TaskPath -eq '\' -and $Task.TaskName -ceq $Spec.Name -and $Task.Description -ceq $Spec.Description -and $account -ceq $Spec.UserSid -and
-        [string]$Task.Principal.LogonType -eq 'Interactive' -and [string]$Task.Principal.RunLevel -eq 'Highest' -and
+        [string]$Task.Principal.LogonType -eq 'Interactive' -and [string]$Task.Principal.RunLevel -eq 'Limited' -and
         $Task.Actions[0].Execute -ieq $Spec.Execute -and $Task.Actions[0].Arguments -ceq $Spec.Arguments -and $Task.Actions[0].WorkingDirectory -ieq $Spec.WorkingDirectory
 }
 
@@ -97,9 +97,12 @@ function Register-LabResumeTask {
     if($existing -and -not (Test-LabResumeTaskIdentity $existing $spec)){throw 'Refuse to replace an unrelated scheduled task.'}
     $action=New-ScheduledTaskAction -Execute $spec.Execute -Argument $spec.Arguments -WorkingDirectory $spec.WorkingDirectory
     $trigger=New-ScheduledTaskTrigger -AtLogOn -User $spec.UserSid;$trigger.Delay=$spec.Delay
-    $principal=New-ScheduledTaskPrincipal -UserId $spec.UserSid -LogonType Interactive -RunLevel Highest
+    $principal=New-ScheduledTaskPrincipal -UserId $spec.UserSid -LogonType Interactive -RunLevel Limited
     $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit ([timespan]::FromHours(2))
     $task=Register-ScheduledTask -TaskPath '\' -TaskName $spec.Name -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description $spec.Description -Force
+    $scheduler=New-Object -ComObject Schedule.Service;$scheduler.Connect()
+    $owned=$scheduler.GetFolder('\').GetTask($spec.Name)
+    $owned.SetSecurityDescriptor(('D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;'+$State.UserSid+')'),0)
     if(-not (Test-LabResumeTaskIdentity $task $spec)){throw 'Scheduled resume task verification failed; no automatic restart will be requested.'}
 }
 

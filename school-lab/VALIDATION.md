@@ -225,3 +225,18 @@ Nguồn: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/extens
 - Hồi quy: **104** logic/parse, **122** SFIT integration, **116** profile/shortcut, **97** restart, **19** runtime SFIT đạt. Chưa kiểm thử trực tiếp trên máy lớp Windows 11 vừa báo lỗi; cần chạy gói mới để xác nhận hoặc đọc diagnostic nếu còn lỗi.
 - API tham chiếu: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getshellwindow , https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsquerysessioninformationw , https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-openinputdesktop , https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocesstoken .
 - Đã build SchoolLab-2.6.3-20261031, PackageId 20261031-7b263424, 263 file có hash; ValidateOnly đạt và lock không thay đổi. ZIP LabAutoInstall-2.6.3-Offline.zip khoảng 749.51 MiB, đã đọc/đối chiếu hash đủ 264 file (kể cả package-lock). SHA256 ZIP: 4A4621166448BA42C5622A07CC8B22978533D56C3589CB391BAEFCB95ECA923A.
+
+## SchoolLab 2.7.0 — bàn giao đúng tài khoản Desktop
+
+- Log máy lớp xác nhận CurrentAccount pkt14/SID1001 khác ShellSid và SessionSid1002, cùng session8/Default/Active. Đây là khác danh tính thật, không phải lỗi WMI. Giữ bộ xác minh SID, thay đổi luồng thực thi.
+- Elevated parent xác định SID/session của shell, stage bộ cài vào Program Files, tạo result folder riêng với ACL SYSTEM/Admin + đúng SID Desktop. Tác vụ Interactive/Limited chạy actor trong session cụ thể; actor kiểm tra SID/session và hash gói, cấu hình VS Code và Chrome theo người dùng. Kết quả phải khớp nonce, package, SID, session; tác vụ được dọn theo tên/description/action khớp chính xác.
+- SFIT dùng LOCALAPPDATA và HKCU NativeMessagingHosts; không cần cấp admin cho tài khoản thực hành. Restart chỉ sau kết quả đã đạt; kiểm tra sau restart chạy Limited trong Desktop SID, không yêu cầu đăng nhập lại admin đã dùng cho UAC.
+- Kiểm tra logic 107, bàn giao SID/kết quả 12, restart 97 đạt; các fixture không tạo task hay cài phần mềm. Chưa kiểm thử tác vụ bàn giao thật trên máy hai tài khoản/Windows11 của trường; cần pilot. Không coi các kiểm tra fixture là bằng chứng luồng UI hai tài khoản đã hoàn tất thực tế.
+- Đã chạy probe thực: tác vụ Interactive/Limited thực thi PowerShell exit0 trong session hiện tại bằng RunEx flags4 và đã gỡ tác vụ probe. Probe không cài phần mềm hay thay đổi profile. Các hồi quy SFIT122, profile116, context31 và runtime19 đạt trước yêu cầu bỏ qua test tiếp theo.
+
+## SchoolLab 2.7.1 — bổ sung Code Runner offline
+
+- Thêm formulahendry.code-runner 0.12.2 từ Visual Studio Marketplace, kiểm SHA256 theo metadata nhà phát hành và đưa vào dependency closure/RequiredExtensionIds. VSIX universal khoảng 751 KB; pin trong sources-lock của repo và cache.
+- Workspace C++/Java/Python được cấu hình runInTerminal/saveFileBeforeRun/ignoreSelection. Chọn Command Prompt với /d, lệnh dùng đường dẫn toolchain cụ thể và chỉ chạy khi compiler thành công. Có stdin. Java runner cho bài đơn giản một file/default package; extension Java debugger vẫn dùng cho dự án Java.
+- Theo yêu cầu người dùng, không chạy thêm test suite cho lần bổ sung Code Runner. Chỉ kiểm tra thành phần/hash khi đóng gói; chưa thử Run Code tương tác trên máy lớp. Giữ toàn bộ sửa bàn giao SID của 2.7.0.
+- Đã build SchoolLab-2.7.1-20261031, PackageId 20261031-63e11e1d, 267 file có hash. ZIP chứa 268 file đã đối chiếu SHA256 với thư mục build, khoảng 750.21 MiB. SHA256 ZIP: DB575C4503C5363080F96471FBF0D5526EAE50F6F704D1BAB74CC116E5D4C0C2. Không tải ZIP lên GitHub Release theo yêu cầu.
